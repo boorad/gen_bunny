@@ -35,7 +35,7 @@ exec erl \
     -pa ebin \
     -pa deps/*/ebin \
     -s rabbit \
-    -name riak_mq@$1 \
+    -name rmq@$1 \
     -boot start_sasl \
     -mnesia dir "\"${RABBITMQ_MNESIA_DIR}\"" \ 
     +W w \
