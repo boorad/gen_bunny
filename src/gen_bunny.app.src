@@ -1,0 +1,10 @@
+% -*- mode: erlang -*-
+{application, 
+ gen_rabbit,
+ [{description,  "gen_bunny"},
+  {vsn,          "0.1"},
+  {modules,      [__MODULES__]},
+  {registered,   []},
+  {mod,          {gen_bunny_app, []}},
+  {env,          []},
+  {applications, [kernel, stdlib, sasl, crypto]}]}.

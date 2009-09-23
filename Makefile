@@ -1,8 +1,8 @@
 ERL          ?= erl
 EBIN_DIRS    := $(wildcard deps/*/ebin)
-APP          := gen_rabbit
+APP          := gen_bunny
 
-all: rabbitmq-server rabbitmq-erlang-client erl 
+all: rabbitmq-server rabbitmq-erlang-client erl
 
 erl: ebin/$(APP).app src/$(APP).app.src
 	@$(ERL) -pa ebin -pa $(EBIN_DIRS) -noinput +B \
@@ -17,13 +17,18 @@ rabbitmq-erlang-client:
 docs:
 	@erl -noshell -run edoc_run application '$(APP)' '"."' '[]'
 
+test: erl
+	@erl -noshell -pa ebin/ \
+		-eval 'eunit:test("ebin", [verbose])' \
+		-s init stop
+
 clean:
 	@echo "removing:"
 	@rm -fv ebin/*.beam ebin/*.app
 
-dialyzer: erl 
+dialyzer: erl
 	@dialyzer -Wno_return -c ebin/ | tee priv/log/dialyzer.log
 
 ebin/$(APP).app: src/$(APP).app.src
-	@echo "generating ebin/gen_rabbit.app"
-	@bash support/bin/make_appfile.sh >ebin/gen_rabbit.app	
+	@echo "generating ebin/gen_bunny.app"
+	@bash support/bin/make_appfile.sh >ebin/gen_bunny.app
