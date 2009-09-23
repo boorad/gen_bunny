@@ -1,5 +1,5 @@
 -module(rmq_queue).
--include("gen_rabbit.hrl").
+-include("gen_bunny.hrl").
 
 -export([new/1,
          get_name/1,

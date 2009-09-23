@@ -16,3 +16,8 @@ log/.*.log$
 priv/rabbit-mnesia/*
 deps/.*/*.beam
 priv/log/rabbit/*
+.*\.pyc
+deps/rabbitmq-erlang-client/rabbitmq_server
+deps/rabbitmq-server/include/rabbit_framing.hrl
+deps/rabbitmq-server/src/rabbit_framing.erl
+deps/rabbitmq-server/codegen/amqp_codegen.pyc

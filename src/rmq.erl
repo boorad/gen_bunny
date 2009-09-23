@@ -1,5 +1,5 @@
 -module(rmq).
--include_lib("gen_rabbit.hrl").
+-include_lib("gen_bunny.hrl").
 -export([new_client/3]).
 
 new_client(ExchangeName, QueueName, IsDurable) 
