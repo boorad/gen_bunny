@@ -1,5 +1,5 @@
 -module(rmq_connection).
--include("gen_rabbit.hrl").
+-include("gen_bunny.hrl").
 -export([new/0,
          get_pid/1,
          new_channel/1,

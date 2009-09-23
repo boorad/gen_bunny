@@ -1,0 +1,6 @@
+- write wrapper module for dealing with rabbitmq messages
+- fill in boilerplate gen_bunny behavior with actual functionality
+- figure out how to deal with build-time dependency on the rabbitmq-server source
+- harvest useful bits from the rmq_* record wrappers and get rid of them
+- write unit tests
+- write documentation
