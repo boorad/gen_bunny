@@ -1,5 +1,5 @@
 -module(rmq_channel).
--include("riak_mq.hrl").
+-include("gen_rabbit.hrl").
 -export([new/1,
          get_pid/1,
          get_connection/1,

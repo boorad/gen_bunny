@@ -1,5 +1,5 @@
 -module(rmq_queue).
--include("riak_mq.hrl").
+-include("gen_rabbit.hrl").
 
 -export([new/1,
          get_name/1,

@@ -1,5 +1,5 @@
 -module(rmq).
--include_lib("riak_mq.hrl").
+-include_lib("gen_rabbit.hrl").
 -export([new_client/3]).
 
 new_client(ExchangeName, QueueName, IsDurable) 
