@@ -1,0 +1,10 @@
+% -*- mode: erlang -*-
+{application, 
+ riak_mq,
+ [{description,  "gen_rabbit"},
+  {vsn,          "0.1"},
+  {modules,      [__MODULES__]},
+  {registered,   []},
+  {mod,          {gen_rabbit_app, []}},
+  {env,          []},
+  {applications, [kernel, stdlib, sasl, crypto]}]}.
