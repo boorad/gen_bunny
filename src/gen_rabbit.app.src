@@ -1,6 +1,6 @@
 % -*- mode: erlang -*-
 {application, 
- riak_mq,
+ gen_rabbit,
  [{description,  "gen_rabbit"},
   {vsn,          "0.1"},
   {modules,      [__MODULES__]},
