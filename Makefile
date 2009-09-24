@@ -18,14 +18,14 @@ docs:
 	@erl -noshell -run edoc_run application '$(APP)' '"."' '[]'
 
 test: erl
-	@support/bin/run_tests.escript ebin | tee test.log
+	@support/bin/run_tests.escript ebin | tee test/test.log
 
 clean:
 	@echo "removing:"
 	@rm -fv ebin/*.beam ebin/*.app
 
 dialyzer: erl
-	@dialyzer -Wno_return -c ebin/ | tee priv/log/dialyzer.log
+	@dialyzer -Wno_match -Wno_return -c ebin/ | tee test/dialyzer.log
 
 ebin/$(APP).app: src/$(APP).app.src
 	@echo "generating ebin/gen_bunny.app"
