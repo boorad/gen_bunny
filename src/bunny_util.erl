@@ -181,7 +181,8 @@ is_durable(#'queue.declare'{durable=Durable}) ->
 
 %% @spec set_durable(QueueOrExchange::durable_obj(), boolean()) -> durable_obj()
 %% @doc  Set the durability flag on a Queue or Exchange
-set_durable(Exchange, Durable) when is_boolean(Durable) ->
+set_durable(Exchange, Durable) 
+  when ?is_exchange(Exchange), is_boolean(Durable) ->
     Exchange#'exchange.declare'{durable=Durable};
 set_durable(Queue, Durable) when ?is_queue(Queue), is_boolean(Durable) ->
     Queue#'queue.declare'{durable=Durable}.
@@ -294,18 +295,18 @@ new_queue_test() ->
 
 is_durable_queue_test() ->
     ?assertEqual(true,
-                 is_durable(#'exchange.declare'{durable=true})),
+                 is_durable(#'queue.declare'{durable=true})),
     ?assertEqual(false,
-                 is_durable(#'exchange.declare'{durable=false})).
+                 is_durable(#'queue.declare'{durable=false})).
 
 
 set_durable_queue_test() ->
-    Exchange = new_exchange(<<"Hello">>),
-    NewExchange = set_durable(Exchange, true),
-    ?assertEqual(true, NewExchange#'exchange.declare'.durable),
+    Queue = new_queue(<<"Hello">>),
+    NewQueue = set_durable(Queue, true),
+    ?assertEqual(true, NewQueue#'queue.declare'.durable),
 
-    NewExchange2 = set_durable(Exchange, false),
-    ?assertEqual(false, NewExchange2#'exchange.declare'.durable).
+    NewQueue2 = set_durable(Queue, false),
+    ?assertEqual(false, NewQueue2#'queue.declare'.durable).
 
 
 %%
