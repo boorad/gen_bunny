@@ -35,6 +35,11 @@
          terminate/2,
          code_change/3]).
 -export([behaviour_info/1]).
+
+-export([call/2,
+         call/3,
+         cast/2]).
+
 -export([get_connection/1,
          get_channel/1,
          get_consumer_tag/1,
@@ -64,6 +69,16 @@ start_link(Module, ConnectionInfo, QueueName, InitArgs)
       [Module,ConnectionInfo, QueueName, InitArgs], 
       []).
 
+call(Name, Request) ->
+    gen_server:call(Name, Request).
+
+call(Name, Request, Timeout) ->
+    gen_server:call(Name, Request, Timeout).
+
+cast(Dest, Request) ->
+    gen_server:cast(Dest, Request).
+
+
 init([Module, ConnectionInfo, QueueName, InitArgs]) ->
     case Module:init(InitArgs) of
         {ok, ModState} ->
@@ -75,9 +90,9 @@ init([Module, ConnectionInfo, QueueName, InitArgs]) ->
                                 channel=ChannelPid,
                                 connection=ConnectionPid,
                                 queue=QueueName}};
-                Err ->
-                    Module:terminate(Err, ModState),
-                    Err
+                {_ErrClass, {error, Reason}} ->
+                    Module:terminate(Reason, ModState),
+                    {stop, Reason}
             end;
         Error ->
             Error
@@ -159,6 +174,7 @@ handle_info(Info, State=#state{mod=Module, modstate=ModState}) ->
     
 
 terminate(Reason, #state{mod=Mod, modstate=ModState}) ->
+    io:format("gen_bunny terminating with reason ~p~n", [Reason]),
     Mod:terminate(Reason, ModState),
     ok.
 
@@ -169,17 +185,26 @@ code_change(_OldVersion, State, _Extra) ->
 %% TODO: better error handling here.
 connect_and_subscribe({direct, Username, Password}, QueueName) ->
     %% TODO: link? 
-    ConnectionPid = amqp_connection:start_direct(Username, Password),
-    ChannelPid = amqp_connection:open_channel(ConnectionPid),
-    lib_amqp:subscribe(ChannelPid, QueueName, self()),
-    {ok, ChannelPid, ConnectionPid};
+    case catch amqp_connection:start_direct(Username, Password) of
+        {'EXIT', {Reason, _Stack}} ->
+            Reason;
+        ConnectionPid when is_pid(ConnectionPid) ->
+            ChannelPid = amqp_connection:open_channel(ConnectionPid),
+            lib_amqp:subscribe(ChannelPid, QueueName, self()),
+            {ok, ChannelPid, ConnectionPid}
+    end;
 connect_and_subscribe({network, Host, Port, Username, Password, VHost}, 
                       QueueName) ->
-    ConnectionPid = amqp_connection:start_network(Username, Password, Host,
-                                                  Port, VHost),
-    ChannelPid = amqp_connection:open_channel(ConnectionPid),
-    lib_amqp:subscribe(ChannelPid, QueueName, self()),
-    {ok, ChannelPid, ConnectionPid}.
+
+    case catch amqp_connection:start_direct(Username, Password, Host, 
+                                            Port, VHost) of
+        {'EXIT', {Reason, _Stack}} ->
+            Reason;
+        ConnectionPid when is_pid(ConnectionPid) ->
+            ChannelPid = amqp_connection:open_channel(ConnectionPid),
+            lib_amqp:subscribe(ChannelPid, QueueName, self()),
+            {ok, ChannelPid, ConnectionPid}
+    end.
 
 
     

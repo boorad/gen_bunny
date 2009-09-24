@@ -30,6 +30,8 @@
          handle_info/2,
          terminate/2]).
 
+-export([get_messages/1]).
+
 -include_lib("gen_bunny.hrl").
 
 -record(state, {messages=[]}).
@@ -61,22 +63,29 @@ setup(Type) ->
 
 start_link(Type) ->
     setup(Type),
-    gen_bunny:start_link(?MODULE, {direct, "guest", "guest2"}, <<"bunny.test">>, []).
+    gen_bunny:start_link(?MODULE, {direct, "guest", "guest"}, 
+                         <<"bunny.test">>, []).
 
 init([]) -> 
     {ok, #state{}}.
+
+get_messages(Pid) ->
+    gen_bunny:call(Pid, get_messages).
 
 handle_message(Message, State=#state{messages=Messages}) -> 
     NewMessages = [Message|Messages],
     {noreply, State#state{messages=NewMessages}}.
 
-handle_call(_Request, _From, State) -> {reply, ok, State}.
+handle_call(get_messages, _From, State=#state{messages=Messages}) -> 
+    {reply, Messages, State}.
 
 handle_cast(_Msg, State) -> {noreply, State}.
 
 handle_info(_Info, State) -> {noreply, State}.
 
-terminate(_Reason, _State) -> ok.
+terminate(Reason, _State) -> 
+    io:format("~p terminating with reason ~p~n", [?MODULE, Reason]),
+    ok.
 
 
 %%
