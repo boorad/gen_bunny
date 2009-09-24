@@ -22,21 +22,51 @@
 -module(example_gb).
 -behavior(gen_bunny).
 
--export([start_link/0,
+-export([start_link/1,
          init/1,
          handle_message/2,
          terminate/2]).
 
-start_link() ->
+-include_lib("gen_bunny.hrl").
+
+-record(state, {}).
+
+open_connection(direct) ->
     Connection = lib_amqp:start_connection(),
     Channel = lib_amqp:start_channel(Connection),
-    QueueName = <<"test.queue">>,
-    InitArgs = [foo, bar, baz],
-    gen_bunny:start_link(?MODULE, Channel, QueueName, InitArgs).
+    {Connection, Channel};
+open_connection(network) ->
+    Connection = amqp_connection:start_network("guest", "guest", "127.0.0.1", 
+                                               ?PROTOCOL_PORT, <<"/">>),
+    Channel = lib_amqp:start_channel(Connection),
+    {Connection, Channel}.
 
-init([foo, bar, baz]) -> {ok, my_state}.
+setup(Type) ->
+    {_Connection, Channel} = open_connection(Type),
+    %% TODO : need utility stuff for these
+    Exchange = bunny_util:set_durable(
+                 bunny_util:new_exchange(<<"bunny.test">>), true),
+    Queue = bunny_util:set_durable(
+              bunny_util:new_queue(<<"bunny.test">>), true),
+    _Binding = bunny_util:new_binding(<<"bunny.test">>, <<"bunny.test">>,
+                                      <<"bunny.test">>),    
+    amqp_channel:call(Channel, Exchange),
+    amqp_channel:call(Channel, Queue),
+    lib_amqp:bind_queue(Channel, <<"bunny.test">>, <<"bunny.test">>,
+                        <<"bunny.test">>).
+    
 
-handle_message(_Message, my_state) -> {noreply, my_state}.
+start_link(Type) ->
+    setup(Type),
+    gen_bunny:start_link(?MODULE, 
+                         {direct, "guest", "guest"}, <<"bunny.test">>, []).
+
+init([]) -> 
+    {ok, #state{}}.
+
+handle_message(Message, State) -> 
+    io:format("~p got message ~p~n", [?MODULE, Message]),
+    {noreply, State}.
 
 terminate(_Reason, _State) -> ok.
 
