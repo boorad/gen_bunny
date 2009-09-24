@@ -29,7 +29,7 @@
 
 -include_lib("gen_bunny.hrl").
 
--record(state, {}).
+-record(state, {messages=[]}).
 
 open_connection(direct) ->
     Connection = lib_amqp:start_connection(),
@@ -58,15 +58,21 @@ setup(Type) ->
 
 start_link(Type) ->
     setup(Type),
-    gen_bunny:start_link(?MODULE, 
-                         {direct, "guest", "guest"}, <<"bunny.test">>, []).
+    gen_bunny:start_link(?MODULE, {direct, "guest", "guest"}, <<"bunny.test">>, []).
 
 init([]) -> 
     {ok, #state{}}.
 
-handle_message(Message, State) -> 
-    io:format("~p got message ~p~n", [?MODULE, Message]),
-    {noreply, State}.
+handle_message(Message, State=#state{messages=Messages}) -> 
+    NewMessages = [Message|Messages],
+    {noreply, State#state{messages=NewMessages}}.
 
 terminate(_Reason, _State) -> ok.
+
+
+%%
+%% Tests
+%%
+
+-include_lib("eunit/include/eunit.hrl").
 
