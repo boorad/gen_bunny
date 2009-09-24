@@ -1,10 +1,33 @@
+%% The MIT License
+
+%% Copyright (c) David Reid <dreid@dreid.org>, Andy Gross <andy@andygross.org>
+
+%% Permission is hereby granted, free of charge, to any person obtaining a copy
+%% of this software and associated documentation files (the "Software"), to deal
+%% in the Software without restriction, including without limitation the rights
+%% to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+%% copies of the Software, and to permit persons to whom the Software is
+%% furnished to do so, subject to the following conditions:
+
+%% The above copyright notice and this permission notice shall be included in
+%% all copies or substantial portions of the Software.
+
+%% THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+%% IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+%% FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+%% AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+%% LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+%% OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+%% THE SOFTWARE.
+
+%% @doc The gen_bunny RabbitMQ consumer behavior.
 -module(gen_bunny).
--author('Andy Gross <andy@basho.com>').
--author('David Reid <dreid@mochimedia.com').
+-author('Andy Gross <andy@andygross.org>').
+-author('David Reid <dreid@dreid.org').
 -behavior(gen_server).
 -include_lib("gen_bunny.hrl").
 
--export([start_link/3]).
+-export([start_link/4]).
 -export([init/1,
          handle_call/3,
          handle_cast/2,
@@ -13,7 +36,7 @@
          code_change/3]).
 -export([behaviour_info/1]).
 
--record(state, {mod, modstate, options}).
+-record(state, {mod, modstate, channel, queue}).
 
 behaviour_info(callbacks) ->
     [{init, 1},
@@ -22,19 +45,18 @@ behaviour_info(callbacks) ->
 behaviour_info(_) -> 
     undefined.
 
-start_link(Module, Options, InitArgs) 
-  when is_list(Options), is_list(InitArgs) ->
-    gen_server:start_link(?MODULE, [Module, Options, InitArgs], []).
+start_link(Module, ChannelPid, QueueName, InitArgs) 
+  when is_pid(ChannelPid), is_binary(QueueName), is_list(InitArgs)  ->
+    gen_server:start_link(?MODULE, [Module,ChannelPid,QueueName,InitArgs], []).
 
-init([Module, Options, InitArgs]) ->
-    %% TODO:  for now im assuming all consumer info is in the "options"
-    %% proplist.  likely that we'll change this to accept more args for
-    %% subscription info and put the more obscure stuff in the proplist.
-
+init([Module, ChannelPid, QueueName, InitArgs]) ->
     %% TODO:  actually do something 
     case Module:init(InitArgs) of
         {ok, ModState} ->
-            {ok, #state{mod=Module, modstate=ModState, options=Options}};
+            {ok, #state{mod=Module, 
+                        modstate=ModState, 
+                        channel=ChannelPid,
+                        queue=QueueName}};
         Error ->
             Error
     end.
