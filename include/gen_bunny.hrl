@@ -13,5 +13,19 @@
 
 -define(is_message(X), element(1, X) =:= content).
 
+%%
+%% -types() - EDoc really needs to learn to read these.
+%%
+-type(message() :: #content{}).
+-type(payload() :: binary()).
+-type(delivery_mode() :: non_neg_integer()).
+-type(content_type() :: binary()).
+-type(exchange() :: #'exchange.declare'{}).
+-type(servobj_name() :: binary()).
+-type(exchange_type() :: binary()).
+-type(bunny_queue() :: #'queue.declare'{}).
+-type(binding() :: #binding{}).      
+-type(durable_obj() :: exchange() | bunny_queue()).
+
 -endif. %% GEN_BUNNY_HRL_PREIFX
 
