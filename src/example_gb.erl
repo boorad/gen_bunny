@@ -25,6 +25,9 @@
 -export([start_link/1,
          init/1,
          handle_message/2,
+         handle_call/3,
+         handle_cast/2,
+         handle_info/2,
          terminate/2]).
 
 -include_lib("gen_bunny.hrl").
@@ -58,7 +61,7 @@ setup(Type) ->
 
 start_link(Type) ->
     setup(Type),
-    gen_bunny:start_link(?MODULE, {direct, "guest", "guest"}, <<"bunny.test">>, []).
+    gen_bunny:start_link(?MODULE, {direct, "guest", "guest2"}, <<"bunny.test">>, []).
 
 init([]) -> 
     {ok, #state{}}.
@@ -66,6 +69,12 @@ init([]) ->
 handle_message(Message, State=#state{messages=Messages}) -> 
     NewMessages = [Message|Messages],
     {noreply, State#state{messages=NewMessages}}.
+
+handle_call(_Request, _From, State) -> {reply, ok, State}.
+
+handle_cast(_Msg, State) -> {noreply, State}.
+
+handle_info(_Info, State) -> {noreply, State}.
 
 terminate(_Reason, _State) -> ok.
 

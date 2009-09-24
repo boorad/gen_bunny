@@ -50,6 +50,9 @@
 behaviour_info(callbacks) ->
     [{init, 1},
      {handle_message, 2},
+     {handle_call, 3},
+     {handle_cast, 2},
+     {handle_info, 2},
      {terminate, 2}];
 behaviour_info(_) -> 
     undefined.
@@ -97,12 +100,36 @@ handle_call(get_connection, _From, State=#state{connection=Connection}) ->
 handle_call(get_channel, _From, State=#state{channel=Channel}) ->
     {reply, Channel, State};
 handle_call(get_consumer_tag, _From, State=#state{consumer_tag=CTag}) ->
-    {reply, CTag, State}.
+    {reply, CTag, State};
+handle_call(Request, From, State=#state{mod=Module, modstate=ModState}) ->
+    case Module:handle_call(Request, From, ModState) of
+        {reply, Reply, NewModState} ->
+            {reply, Reply, State#state{modstate=NewModState}};
+        {reply, Reply, NewModState, A} when A =:= hibernate orelse is_number(A) ->
+            {reply, Reply, State#state{modstate=NewModState}, A};
+        {noreply, NewModState} ->
+            {noreply, State#state{modstate=NewModState}};
+        {noreply, NewModState, A} when A =:= hibernate orelse is_number(A) ->
+            {noreply, State#state{modstate=NewModState}, A};
+        {stop, Reason, NewModState} ->
+            {stop, Reason, State#state{modstate=NewModState}};
+        {stop, Reason, Reply, NewModState} ->
+            {stop, Reason, Reply, State#state{modstate=NewModState}}
+  end.
 
 handle_cast(stop, State=#state{channel=Channel, consumer_tag=CTag, connection=Connection}) ->
     ok = lib_amqp:unsubscribe(Channel, CTag),
     ok = lib_amqp:teardown(Connection, Channel),
-    {stop, normal, State}.
+    {stop, normal, State};
+handle_cast(Msg, State=#state{mod=Module, modstate=ModState}) ->
+    case Module:handle_cast(Msg, ModState) of
+        {noreply, NewModState} ->
+            {noreply, State#state{modstate=NewModState}};
+        {noreply, NewModState, A} when A =:= hibernate orelse is_number(A) ->
+            {noreply, State#state{modstate=NewModState}, A};
+        {stop, Reason, NewModState} ->
+            {stop, Reason, State#state{modstate=NewModState}}
+    end.
 
 handle_info({#'basic.deliver'{},
             {content, _ClassId, _Props, _PropertiesBin, [Payload]}},
@@ -119,7 +146,16 @@ handle_info({#'basic.deliver'{},
             {stop, Reason, State#state{modstate=NewModState}}
     end;
 handle_info(#'basic.consume_ok'{consumer_tag=CTag}, State=#state{}) ->
-    {noreply, State#state{consumer_tag=CTag}}.
+    {noreply, State#state{consumer_tag=CTag}};
+handle_info(Info, State=#state{mod=Module, modstate=ModState}) ->
+    case Module:handle_info(Info, ModState) of
+        {noreply, NewModState} ->
+            {noreply, State#state{modstate=NewModState}};
+        {noreply, NewModState, A} when A =:= hibernate orelse is_number(A) ->
+            {noreply, State#state{modstate=NewModState}, A};
+        {stop, Reason, NewModState} ->
+            {stop, Reason, State#state{modstate=NewModState}}
+    end.
     
 
 terminate(Reason, #state{mod=Mod, modstate=ModState}) ->
@@ -139,7 +175,6 @@ connect_and_subscribe({direct, Username, Password}, QueueName) ->
     {ok, ChannelPid, ConnectionPid};
 connect_and_subscribe({network, Host, Port, Username, Password, VHost}, 
                       QueueName) ->
-    
     ConnectionPid = amqp_connection:start_network(Username, Password, Host,
                                                   Port, VHost),
     ChannelPid = amqp_connection:open_channel(ConnectionPid),
