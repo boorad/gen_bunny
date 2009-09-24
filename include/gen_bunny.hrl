@@ -1,5 +1,5 @@
--ifndef(RIAK_MQ_HRL_PREFIX).
--define(RIAK_MQ_HRL_PREFIX, true).
+-ifndef(GEN_BUNNY_HRL_PREFIX).
+-define(GEN_BUNNY_HRL_PREFIX, true).
 
 -include_lib("rabbit.hrl").
 -include_lib("rabbit_framing.hrl").
@@ -13,5 +13,5 @@
 
 -define(is_message(X), element(1, X) =:= content).
 
--endif. %% RIAK_MQ_HRL_PREIFX
+-endif. %% GEN_BUNNY_HRL_PREIFX
 

@@ -1,6 +1,6 @@
 % -*- mode: erlang -*-
 {application, 
- gen_rabbit,
+ gen_bunny,
  [{description,  "gen_bunny"},
   {vsn,          "0.1"},
   {modules,      [__MODULES__]},

@@ -21,3 +21,5 @@ deps/rabbitmq-erlang-client/rabbitmq_server
 deps/rabbitmq-server/include/rabbit_framing.hrl
 deps/rabbitmq-server/src/rabbit_framing.erl
 deps/rabbitmq-server/codegen/amqp_codegen.pyc
+test\.log
+^test/.*

@@ -18,9 +18,7 @@ docs:
 	@erl -noshell -run edoc_run application '$(APP)' '"."' '[]'
 
 test: erl
-	@erl -noshell -pa ebin/ \
-		-eval 'eunit:test("ebin", [verbose])' \
-		-s init stop
+	@support/bin/run_tests.escript ebin | tee test.log
 
 clean:
 	@echo "removing:"
