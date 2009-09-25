@@ -3,6 +3,7 @@
 %%! -name gen_bunny__test@127.0.0.1
 main([Ebin]) ->
     code:add_path(Ebin),
+    code:add_path("deps/effigy/src"),
     code:add_paths(filelib:wildcard("deps/*/ebin", Ebin)),
     code:add_paths(filelib:wildcard("deps/*/deps/*/ebin", Ebin)),
 

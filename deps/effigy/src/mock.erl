@@ -134,7 +134,7 @@ handle_call({expects, Function, Args, Ret, Times}, _From, State = #state{expecta
   {reply, ok, State#state{expectations=add_expectation(Function, Args, Ret, Times, Expects)}};
 
 handle_call(verify, _From, State = #state{expectations=Expects,module=Mod}) ->
-  ?infoFmt("verifying ~p~n", [Mod]),
+  %% ?infoFmt("verifying ~p~n", [Mod]),
   if
     length(Expects) > 0 -> {reply, {mismatch, format_missing_expectations(Expects, Mod)}, State};
     true -> {reply, ok, State}
