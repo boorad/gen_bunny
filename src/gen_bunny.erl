@@ -45,11 +45,12 @@
          get_consumer_tag/1,
          stop/1]).
 
--record(state, {mod, 
-                modstate, 
-                channel, 
+-record(state, {mod,
+                modstate,
+                channel,
                 connection,
-                queue, 
+                queue,
+                declare_info,
                 consumer_tag}).
 
 behaviour_info(callbacks) ->
@@ -59,14 +60,16 @@ behaviour_info(callbacks) ->
      {handle_cast, 2},
      {handle_info, 2},
      {terminate, 2}];
-behaviour_info(_) -> 
+behaviour_info(_) ->
     undefined.
 
-start_link(Module, ConnectionInfo, QueueName, InitArgs) 
-  when is_tuple(ConnectionInfo), is_binary(QueueName), is_list(InitArgs)  ->
+start_link(Module, ConnectionInfo, DeclareInfo, InitArgs)
+  when is_atom(ConnectionInfo) orelse is_tuple(ConnectionInfo),
+       is_binary(DeclareInfo) orelse is_tuple(DeclareInfo),
+       is_list(InitArgs) ->
     gen_server:start_link(
-      ?MODULE, 
-      [Module,ConnectionInfo, QueueName, InitArgs], 
+      ?MODULE,
+      [Module, ConnectionInfo, DeclareInfo, InitArgs],
       []).
 
 call(Name, Request) ->
@@ -79,16 +82,17 @@ cast(Dest, Request) ->
     gen_server:cast(Dest, Request).
 
 
-init([Module, ConnectionInfo, QueueName, InitArgs]) ->
+init([Module, ConnectionInfo, DeclareInfo, InitArgs]) ->
     case Module:init(InitArgs) of
         {ok, ModState} ->
-            case connect_and_subscribe(ConnectionInfo, QueueName) of
-                {ok, ChannelPid, ConnectionPid} ->
+            case connect_declare_subscribe(ConnectionInfo, DeclareInfo) of
+                {ok, ConnectionPid, ChannelPid, QueueName} ->
                     %% TODO:  monitor channel/connection pids?
-                    {ok, #state{mod=Module, 
+                    {ok, #state{mod=Module,
                                 modstate=ModState,
                                 channel=ChannelPid,
                                 connection=ConnectionPid,
+                                declare_info=DeclareInfo,
                                 queue=QueueName}};
                 {_ErrClass, {error, Reason}} ->
                     Module:terminate(Reason, ModState),
@@ -171,7 +175,7 @@ handle_info(Info, State=#state{mod=Module, modstate=ModState}) ->
         {stop, Reason, NewModState} ->
             {stop, Reason, State#state{modstate=NewModState}}
     end.
-    
+
 
 terminate(Reason, #state{mod=Mod, modstate=ModState}) ->
     io:format("gen_bunny terminating with reason ~p~n", [Reason]),
@@ -183,28 +187,21 @@ code_change(_OldVersion, State, _Extra) ->
     {ok, State}.
 
 %% TODO: better error handling here.
-connect_and_subscribe({direct, Username, Password}, QueueName) ->
-    %% TODO: link? 
-    case catch amqp_connection:start_direct(Username, Password) of
+connect_declare_subscribe(ConnectionInfo, DeclareInfo) ->
+    %% TODO: link?
+    case catch bunny_util:connect(ConnectionInfo) of
         {'EXIT', {Reason, _Stack}} ->
             Reason;
-        ConnectionPid when is_pid(ConnectionPid) ->
-            ChannelPid = amqp_connection:open_channel(ConnectionPid),
-            lib_amqp:subscribe(ChannelPid, QueueName, self()),
-            {ok, ChannelPid, ConnectionPid}
-    end;
-connect_and_subscribe({network, Host, Port, Username, Password, VHost}, 
-                      QueueName) ->
-
-    case catch amqp_connection:start_direct(Username, Password, Host, 
-                                            Port, VHost) of
-        {'EXIT', {Reason, _Stack}} ->
-            Reason;
-        ConnectionPid when is_pid(ConnectionPid) ->
-            ChannelPid = amqp_connection:open_channel(ConnectionPid),
-            lib_amqp:subscribe(ChannelPid, QueueName, self()),
-            {ok, ChannelPid, ConnectionPid}
+        {ConnectionPid, ChannelPid} when is_pid(ConnectionPid),
+                                         is_pid(ChannelPid) ->
+            case catch bunny_util:declare(ChannelPid, DeclareInfo) of
+                {'EXIT', {Reason, _Stack}} ->
+                    Reason;
+                {_Exchange, Queue} when ?is_queue(Queue) ->
+                    QueueName = bunny_util:get_name(Queue),
+                    lib_amqp:subscribe(ChannelPid,
+                                       QueueName,
+                                       self()),
+                    {ok, ConnectionPid, ChannelPid, QueueName}
+            end
     end.
-
-
-    

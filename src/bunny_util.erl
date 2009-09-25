@@ -186,7 +186,7 @@ set_durable(Queue, Durable) when ?is_queue(Queue), is_boolean(Durable) ->
 
 -define(DEFAULT_USER, "guest").
 -define(DEFAULT_PASS, "guest").
--define(DEFAULT_VHOST, "/").
+-define(DEFAULT_VHOST, <<"/">>).
 
 connect() ->
     connect(direct).
@@ -203,8 +203,8 @@ connect({network, Host, Port}) ->
     connect({network, Host, Port, {?DEFAULT_USER, ?DEFAULT_PASS}});
 connect({network, Host, Port, Creds}) ->
     connect({network, Host, Port, Creds, ?DEFAULT_VHOST});
-connect({network, Host, Port, {User, Pass}, VHost}) ->
-    Connection = amqp_connection:start_network(Host, Port, User, Pass, VHost),
+connect({network, Host, Port, {User, Pass}, VHost}) when is_binary(VHost) ->
+    Connection = amqp_connection:start_network(User, Pass, Host, Port, VHost),
     Channel = lib_amqp:start_channel(Connection),
     {Connection, Channel}.
 
@@ -233,7 +233,7 @@ declare(Channel, {Exchange, Queue, RoutingKeys})
     [lib_amqp:bind_queue(Channel, ExchangeName, QueueName, RoutingKey) ||
         RoutingKey <- RoutingKeys],
 
-    ok.
+    {Exchange, Queue}.
 
 
 %%
@@ -384,10 +384,10 @@ direct_expects(User, Pass) ->
 
 network_expects(Host, Port, User, Pass, VHost) ->
     mock:expects(amqp_connection, start_network,
-                 fun({H, P0, U, P1, V}) when H =:= Host,
-                                             P0 =:= Port,
-                                             U =:= User,
-                                             P1 =:= Pass,
+                 fun({U, P0, H, P1, V}) when U =:= User,
+                                             P0 =:= Pass,
+                                             H =:= Host,
+                                             P1 =:= Port,
                                              V =:= VHost ->
                          true
                  end,
@@ -481,10 +481,10 @@ connect_network_host_port_creds_vhost_test_() ->
                              10000,
                              "al",
                              "franken",
-                             "/awesome"),
+                             <<"/awesome">>),
              ?assertEqual({dummy_network_conn, dummy_network_channel},
                           connect({network, "amqp.example.com", 10000,
-                                   {"al", "franken"}, "/awesome"}))
+                                   {"al", "franken"}, <<"/awesome">>}))
          end])}.
 
 %%
@@ -516,7 +516,7 @@ declare_expects(Exchange, Queue, Bindings) ->
                     when E =:= Exchange ->
                          true
                  end,
-                 ok,
+                 {Exchange, Queue},
                  2),
 
     mock:expects(lib_amqp, bind_queue,
@@ -540,7 +540,9 @@ declare_everything_test_() ->
              declare_expects(new_exchange(<<"Foo">>),
                              new_queue(<<"Foo">>),
                              [<<"Foo">>]),
-             ?assertEqual(ok, declare(dummy_channel, <<"Foo">>))
+             ?assertEqual({new_exchange(<<"Foo">>),
+                           new_queue(<<"Foo">>)},
+                          declare(dummy_channel, <<"Foo">>))
          end])}.
 
 
@@ -551,8 +553,10 @@ declare_names_test_() ->
              declare_expects(new_exchange(<<"Foo">>),
                              new_queue(<<"Bar">>),
                              [<<"Baz">>]),
-             ?assertEqual(ok, declare(dummy_channel,
-                                      {<<"Foo">>, <<"Bar">>, <<"Baz">>}))
+             ?assertEqual({new_exchange(<<"Foo">>),
+                           new_queue(<<"Bar">>)},
+                          declare(dummy_channel,
+                                  {<<"Foo">>, <<"Bar">>, <<"Baz">>}))
          end])}.
 
 
@@ -563,9 +567,11 @@ declare_names_multiple_keys_test_() ->
              declare_expects(new_exchange(<<"Foo">>),
                              new_queue(<<"Bar">>),
                              [<<"Baz">>, <<"Bax">>]),
-             ?assertEqual(ok, declare(dummy_channel,
-                                      {<<"Foo">>, <<"Bar">>,
-                                       [<<"Baz">>, <<"Bax">>]}))
+             ?assertEqual({new_exchange(<<"Foo">>),
+                           new_queue(<<"Bar">>)},
+                          declare(dummy_channel,
+                                  {<<"Foo">>, <<"Bar">>,
+                                   [<<"Baz">>, <<"Bax">>]}))
          end])}.
 
 
@@ -576,10 +582,12 @@ declare_records_test_() ->
              declare_expects(new_exchange(<<"Foo">>),
                              new_queue(<<"Bar">>),
                              [<<"Baz">>]),
-             ?assertEqual(ok, declare(dummy_channel,
-                                      {new_exchange(<<"Foo">>),
-                                       new_queue(<<"Bar">>),
-                                       <<"Baz">>}))
+             ?assertEqual({new_exchange(<<"Foo">>),
+                           new_queue(<<"Bar">>)},
+                          declare(dummy_channel,
+                                  {new_exchange(<<"Foo">>),
+                                   new_queue(<<"Bar">>),
+                                   <<"Baz">>}))
          end])}.
 
 
@@ -590,8 +598,10 @@ declare_records_multiple_test_() ->
              declare_expects(new_exchange(<<"Foo">>),
                              new_queue(<<"Bar">>),
                              [<<"Baz">>, <<"Bax">>]),
-             ?assertEqual(ok, declare(dummy_channel,
-                                      {new_exchange(<<"Foo">>),
-                                       new_queue(<<"Bar">>),
-                                       [<<"Baz">>, <<"Bax">>]}))
+             ?assertEqual({new_exchange(<<"Foo">>),
+                           new_queue(<<"Bar">>)},
+                          declare(dummy_channel,
+                                  {new_exchange(<<"Foo">>),
+                                   new_queue(<<"Bar">>),
+                                   [<<"Baz">>, <<"Bax">>]}))
          end])}.

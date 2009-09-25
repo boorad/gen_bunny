@@ -22,7 +22,7 @@
 -module(example_gb).
 -behavior(gen_bunny).
 
--export([start_link/1,
+-export([start_link/0,
          init/1,
          handle_message/2,
          handle_call/3,
@@ -36,61 +36,27 @@
 
 -record(state, {messages=[]}).
 
-open_connection(direct) ->
-    Connection = lib_amqp:start_connection(),
-    Channel = lib_amqp:start_channel(Connection),
-    {Connection, Channel};
-open_connection(network) ->
-    Connection = amqp_connection:start_network("guest", "guest", "127.0.0.1", 
-                                               ?PROTOCOL_PORT, <<"/">>),
-    Channel = lib_amqp:start_channel(Connection),
-    {Connection, Channel}.
-
-setup(Type) ->
-    {_Connection, Channel} = open_connection(Type),
-    %% TODO : need utility stuff for these
-    Exchange = bunny_util:set_durable(
-                 bunny_util:new_exchange(<<"bunny.test">>), true),
-    Queue = bunny_util:set_durable(
-              bunny_util:new_queue(<<"bunny.test">>), true),
-    _Binding = bunny_util:new_binding(<<"bunny.test">>, <<"bunny.test">>,
-                                      <<"bunny.test">>),    
-    amqp_channel:call(Channel, Exchange),
-    amqp_channel:call(Channel, Queue),
-    lib_amqp:bind_queue(Channel, <<"bunny.test">>, <<"bunny.test">>,
-                        <<"bunny.test">>).
-    
-
-start_link(Type) ->
-    setup(Type),
-    gen_bunny:start_link(?MODULE, {direct, "guest", "guest"}, 
+start_link() ->
+    gen_bunny:start_link(?MODULE, direct,
                          <<"bunny.test">>, []).
 
-init([]) -> 
+init([]) ->
     {ok, #state{}}.
 
 get_messages(Pid) ->
     gen_bunny:call(Pid, get_messages).
 
-handle_message(Message, State=#state{messages=Messages}) -> 
+handle_message(Message, State=#state{messages=Messages}) ->
     NewMessages = [Message|Messages],
     {noreply, State#state{messages=NewMessages}}.
 
-handle_call(get_messages, _From, State=#state{messages=Messages}) -> 
+handle_call(get_messages, _From, State=#state{messages=Messages}) ->
     {reply, Messages, State}.
 
 handle_cast(_Msg, State) -> {noreply, State}.
 
 handle_info(_Info, State) -> {noreply, State}.
 
-terminate(Reason, _State) -> 
+terminate(Reason, _State) ->
     io:format("~p terminating with reason ~p~n", [?MODULE, Reason]),
     ok.
-
-
-%%
-%% Tests
-%%
-
--include_lib("eunit/include/eunit.hrl").
-
