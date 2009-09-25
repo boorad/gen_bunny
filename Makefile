@@ -2,7 +2,7 @@ ERL          ?= erl
 EBIN_DIRS    := $(wildcard deps/*/ebin)
 APP          := gen_bunny
 
-all: rabbitmq-server rabbitmq-erlang-client erl
+all: rabbitmq-server rabbitmq-erlang-client effigy erl
 
 erl: ebin/$(APP).app src/$(APP).app.src
 	@$(ERL) -pa ebin -pa $(EBIN_DIRS) -noinput +B \
@@ -13,6 +13,8 @@ rabbitmq-server:
 rabbitmq-erlang-client:
 	@(cd deps/rabbitmq-erlang-client;$(MAKE) BROKER_DIR=../rabbitmq-server)
 
+effigy: 
+	@(cd deps/effigy;./configure && $(MAKE))
 
 docs:
 	@erl -noshell -run edoc_run application '$(APP)' '"."' '[]'

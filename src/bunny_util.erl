@@ -37,15 +37,16 @@
 
 -export([new_queue/1]).
 
--export([new_binding/3]).
-
 -export([new_exchange/1,
          new_exchange/2,
          get_type/1,
          set_type/2]).
 
--export([is_durable/1,
+-export([get_name/1,
+         is_durable/1,
          set_durable/2]).
+
+-export([connect/0, connect/1, declare/2]).
 
 %% @type message()=#content{}
 %% @type payload()=#binary{}
@@ -125,7 +126,7 @@ new_exchange(Name, Type) when is_binary(Name), is_binary(Type) ->
 %% XXX maybe call these  [get|set]_exchange_type() ?
 
 %% @spec get_type(Exchange::exchange()) -> exchange_type()
-%% @doc  Return the exchange type for Exchange. 
+%% @doc  Return the exchange type for Exchange.
 -spec(get_type(exchange()) -> exchange_type()).
 get_type(#'exchange.declare'{type=Type}) ->
     Type.
@@ -140,7 +141,7 @@ set_type(Exchange, Type) when ?is_exchange(Exchange), is_binary(Type) ->
 %%
 %% Queue helpers
 %%
-%% 
+%%
 
 %% @spec new_queue(Name::servobj_name()) -> bunny_queue()
 %% @doc  Create a new Queue named Name
@@ -148,28 +149,19 @@ set_type(Exchange, Type) when ?is_exchange(Exchange), is_binary(Type) ->
 new_queue(Name) when is_binary(Name) ->
     #'queue.declare'{queue=Name}.
 
-%%
-%% Binding helpers
-%%
-
-%% @spec new_binding(ExchangeName::servobj_name(),
-%%                   QueueName::servobj_name(),
-%%                   RoutingKey::servobj_name()) -> binding()
-%% @doc Create a new binding that routes messages delivered to Exchange 
-%%       that match RoutingKey to the queue named QueueName.
--spec(new_binding(servobj_name(), servobj_name(), binary()) -> binding()).
-new_binding(ExchangeName, QueueName, RoutingKey)
-  when is_binary(ExchangeName),
-       is_binary(QueueName),
-       is_binary(RoutingKey) ->
-    #binding{exchange_name=ExchangeName,
-             queue_name=QueueName,
-             key=RoutingKey}.
 
 %%
 %% Common helpers
 %% XXX: I don't particularly like this, but I don't like them having longer
 %%      names either.
+
+%% @spec get_name(QueueOrExchange::exchange()|bunny_queue()) -> servobj_name()
+%% @doc  Return the name of the Queue or Exchange.
+-spec(get_name(exchange()|bunny_queue()) -> servobj_name()).
+get_name(#'exchange.declare'{exchange=Name})  ->
+    Name;
+get_name(#'queue.declare'{queue=Name}) ->
+    Name.
 
 %% @spec is_durable(QueueOrExchange::durable_obj()) -> boolean()
 %% @doc  Return the durability flag on a Queue or exchange
@@ -181,11 +173,67 @@ is_durable(#'queue.declare'{durable=Durable}) ->
 
 %% @spec set_durable(QueueOrExchange::durable_obj(), boolean()) -> durable_obj()
 %% @doc  Set the durability flag on a Queue or Exchange
-set_durable(Exchange, Durable) 
+set_durable(Exchange, Durable)
   when ?is_exchange(Exchange), is_boolean(Durable) ->
     Exchange#'exchange.declare'{durable=Durable};
 set_durable(Queue, Durable) when ?is_queue(Queue), is_boolean(Durable) ->
     Queue#'queue.declare'{durable=Durable}.
+
+
+%%
+%% Connection and Declaration helpers.
+%%
+
+-define(DEFAULT_USER, "guest").
+-define(DEFAULT_PASS, "guest").
+-define(DEFAULT_VHOST, "/").
+
+connect() ->
+    connect(direct).
+
+connect(direct) ->
+    connect({direct, {?DEFAULT_USER, ?DEFAULT_PASS}});
+connect({direct, {User, Pass}}) ->
+    Connection = amqp_connection:start_direct(User, Pass),
+    Channel = lib_amqp:start_channel(Connection),
+    {Connection, Channel};
+connect({network, Host}) ->
+    connect({network, Host, ?PROTOCOL_PORT});
+connect({network, Host, Port}) ->
+    connect({network, Host, Port, {?DEFAULT_USER, ?DEFAULT_PASS}});
+connect({network, Host, Port, Creds}) ->
+    connect({network, Host, Port, Creds, ?DEFAULT_VHOST});
+connect({network, Host, Port, {User, Pass}, VHost}) ->
+    Connection = amqp_connection:start_network(Host, Port, User, Pass, VHost),
+    Channel = lib_amqp:start_channel(Connection),
+    {Connection, Channel}.
+
+
+declare(Channel, NameForEverything) when is_binary(NameForEverything) ->
+    declare(Channel, {NameForEverything, NameForEverything, NameForEverything});
+declare(Channel, {ExchangeName, QueueName, RoutingKey})
+  when is_binary(ExchangeName), is_binary(QueueName), is_binary(RoutingKey) ->
+    declare(Channel, {ExchangeName, QueueName, [RoutingKey]});
+declare(Channel, {ExchangeName, QueueName, RoutingKeys})
+  when is_binary(ExchangeName), is_binary(QueueName), is_list(RoutingKeys) ->
+    declare(Channel, {new_exchange(ExchangeName),
+                      new_queue(QueueName),
+                      RoutingKeys});
+declare(Channel, {Exchange, Queue, RoutingKey})
+  when ?is_exchange(Exchange), ?is_queue(Queue), is_binary(RoutingKey) ->
+    declare(Channel, {Exchange, Queue, [RoutingKey]});
+declare(Channel, {Exchange, Queue, RoutingKeys})
+  when ?is_exchange(Exchange), ?is_queue(Queue), is_list(RoutingKeys)->
+    amqp_channel:call(Channel, Exchange),
+    amqp_channel:call(Channel, Queue),
+
+    ExchangeName = get_name(Exchange),
+    QueueName = get_name(Queue),
+
+    [lib_amqp:bind_queue(Channel, ExchangeName, QueueName, RoutingKey) ||
+        RoutingKey <- RoutingKeys],
+
+    ok.
 
 
 %%
@@ -310,11 +358,240 @@ set_durable_queue_test() ->
 
 
 %%
-%% Binding helpers
+%% Connect helper
+%%
+connect_setup() ->
+    {ok, _} = mock:mock(amqp_connection),
+    ok.
+
+connect_stop(_) ->
+    mock:verify_and_stop(amqp_connection),
+    ok.
+
+direct_expects(User, Pass) ->
+    mock:expects(amqp_connection, start_direct,
+                 fun({U, P}) when U =:= User, P =:= Pass ->
+                         true
+                 end,
+                 dummy_direct_conn),
+
+    mock:expects(amqp_connection, open_channel,
+                 fun({dummy_direct_conn}) ->
+                         true
+                 end,
+                 dummy_direct_channel),
+    ok.
+
+network_expects(Host, Port, User, Pass, VHost) ->
+    mock:expects(amqp_connection, start_network,
+                 fun({H, P0, U, P1, V}) when H =:= Host,
+                                             P0 =:= Port,
+                                             U =:= User,
+                                             P1 =:= Pass,
+                                             V =:= VHost ->
+                         true
+                 end,
+                 dummy_network_conn),
+
+    mock:expects(amqp_connection, open_channel,
+                 fun({dummy_network_conn}) ->
+                         true
+                 end,
+                 dummy_network_channel),
+    ok.
+
+
+connect_test_() ->
+    {setup, fun connect_setup/0, fun connect_stop/1,
+     ?_test(
+        [begin
+             direct_expects(?DEFAULT_USER, ?DEFAULT_PASS),
+
+             ?assertEqual({dummy_direct_conn, dummy_direct_channel}, connect())
+         end])}.
+
+
+connect_direct_test_() ->
+    {setup, fun connect_setup/0, fun connect_stop/1,
+     ?_test(
+        [begin
+             direct_expects(?DEFAULT_USER, ?DEFAULT_PASS),
+             ?assertEqual({dummy_direct_conn, dummy_direct_channel},
+                          connect(direct))
+         end])}.
+
+
+connect_direct_creds_test_() ->
+    {setup, fun connect_setup/0, fun connect_stop/1,
+     ?_test(
+        [begin
+             direct_expects("al", "franken"),
+             ?assertEqual({dummy_direct_conn, dummy_direct_channel},
+                          connect({direct, {"al", "franken"}}))
+         end])}.
+
+
+connect_network_host_test_() ->
+    {setup, fun connect_setup/0, fun connect_stop/1,
+     ?_test(
+        [begin
+             network_expects("amqp.example.com",
+                             ?PROTOCOL_PORT,
+                             ?DEFAULT_USER,
+                             ?DEFAULT_PASS,
+                             ?DEFAULT_VHOST),
+             ?assertEqual({dummy_network_conn, dummy_network_channel},
+                          connect({network, "amqp.example.com"}))
+         end])}.
+
+connect_network_host_port_test_() ->
+    {setup, fun connect_setup/0, fun connect_stop/1,
+     ?_test(
+        [begin
+             network_expects("amqp.example.com",
+                             10000,
+                             ?DEFAULT_USER,
+                             ?DEFAULT_PASS,
+                             ?DEFAULT_VHOST),
+             ?assertEqual({dummy_network_conn, dummy_network_channel},
+                          connect({network, "amqp.example.com", 10000}))
+         end])}.
+
+
+connect_network_host_port_creds_test_() ->
+    {setup, fun connect_setup/0, fun connect_stop/1,
+     ?_test(
+        [begin
+             network_expects("amqp.example.com",
+                             10000,
+                             "al",
+                             "franken",
+                             ?DEFAULT_VHOST),
+             ?assertEqual({dummy_network_conn, dummy_network_channel},
+                          connect({network, "amqp.example.com", 10000,
+                                   {"al", "franken"}}))
+         end])}.
+
+
+connect_network_host_port_creds_vhost_test_() ->
+    {setup, fun connect_setup/0, fun connect_stop/1,
+     ?_test(
+        [begin
+             network_expects("amqp.example.com",
+                             10000,
+                             "al",
+                             "franken",
+                             "/awesome"),
+             ?assertEqual({dummy_network_conn, dummy_network_channel},
+                          connect({network, "amqp.example.com", 10000,
+                                   {"al", "franken"}, "/awesome"}))
+         end])}.
+
+%%
+%% Declare Tests
 %%
 
-new_binding_test() ->
-    Binding = new_binding(<<"Exchange">>, <<"Queue">>, <<"Key">>),
-    ?assertMatch(#binding{queue_name = <<"Queue">>,
-                          exchange_name = <<"Exchange">>,
-                          key = <<"Key">>}, Binding).
+declare_setup() ->
+    {ok, _} = mock:mock(amqp_channel),
+    {ok, _} = mock:mock(lib_amqp),
+    ok.
+
+
+declare_stop(_) ->
+    mock:verify_and_stop(amqp_channel),
+    mock:verify_and_stop(lib_amqp),
+    ok.
+
+
+declare_expects(Exchange, Queue, Bindings) ->
+    QName = Queue#'queue.declare'.queue,
+    EName = Exchange#'exchange.declare'.exchange,
+
+    mock:expects(amqp_channel, call,
+                 fun({dummy_channel, Q = #'queue.declare'{}})
+                    when Q =:= Queue ->
+                         true;
+
+                    ({dummy_channel, E = #'exchange.declare'{}})
+                    when E =:= Exchange ->
+                         true
+                 end,
+                 ok,
+                 2),
+
+    mock:expects(lib_amqp, bind_queue,
+                 fun({dummy_channel, E, Q, K}) when E =:= EName,
+                                                    Q =:= QName ->
+                         case lists:member(K, Bindings) of
+                             true ->
+                                 true
+                         end
+                 end,
+                 ok,
+                 length(Bindings)),
+    ok.
+
+
+
+declare_everything_test_() ->
+    {setup, fun declare_setup/0, fun declare_stop/1,
+     ?_test(
+        [begin
+             declare_expects(new_exchange(<<"Foo">>),
+                             new_queue(<<"Foo">>),
+                             [<<"Foo">>]),
+             ?assertEqual(ok, declare(dummy_channel, <<"Foo">>))
+         end])}.
+
+
+declare_names_test_() ->
+    {setup, fun declare_setup/0, fun declare_stop/1,
+     ?_test(
+        [begin
+             declare_expects(new_exchange(<<"Foo">>),
+                             new_queue(<<"Bar">>),
+                             [<<"Baz">>]),
+             ?assertEqual(ok, declare(dummy_channel,
+                                      {<<"Foo">>, <<"Bar">>, <<"Baz">>}))
+         end])}.
+
+
+declare_names_multiple_keys_test_() ->
+    {setup, fun declare_setup/0, fun declare_stop/1,
+     ?_test(
+        [begin
+             declare_expects(new_exchange(<<"Foo">>),
+                             new_queue(<<"Bar">>),
+                             [<<"Baz">>, <<"Bax">>]),
+             ?assertEqual(ok, declare(dummy_channel,
+                                      {<<"Foo">>, <<"Bar">>,
+                                       [<<"Baz">>, <<"Bax">>]}))
+         end])}.
+
+
+declare_records_test_() ->
+    {setup, fun declare_setup/0, fun declare_stop/1,
+     ?_test(
+        [begin
+             declare_expects(new_exchange(<<"Foo">>),
+                             new_queue(<<"Bar">>),
+                             [<<"Baz">>]),
+             ?assertEqual(ok, declare(dummy_channel,
+                                      {new_exchange(<<"Foo">>),
+                                       new_queue(<<"Bar">>),
+                                       <<"Baz">>}))
+         end])}.
+
+
+declare_records_multiple_test_() ->
+    {setup, fun declare_setup/0, fun declare_stop/1,
+     ?_test(
+        [begin
+             declare_expects(new_exchange(<<"Foo">>),
+                             new_queue(<<"Bar">>),
+                             [<<"Baz">>, <<"Bax">>]),
+             ?assertEqual(ok, declare(dummy_channel,
+                                      {new_exchange(<<"Foo">>),
+                                       new_queue(<<"Bar">>),
+                                       [<<"Baz">>, <<"Bax">>]}))
+         end])}.

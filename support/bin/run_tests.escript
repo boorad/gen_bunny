@@ -16,11 +16,13 @@ main([Ebin]) ->
                         false;
                    (M) when M =:= json_pp ->
                         false;
+                   (M) when M =:= mock orelse M =:= mock_genserver ->
+                        false;
                    (M) ->
                         nomatch == re:run(atom_to_list(M), NonTestRe)
                 end,
                 proplists:get_value(modules, App)),
-    
+
     crypto:start(),
     start_cover(Modules),
     eunit:test(Modules, [verbose]),
@@ -34,10 +36,10 @@ start_cover(Modules) ->
     io:format("Cover compiling...~n"),
     Compiled = [ M || {ok, M} <- [ cover:compile(
                                      filename:join(["src",atom_to_list(M)]),
-                                     [{i, "include"}, 
+                                     [{i, "include"},
                                       {i, "deps/rabbitmq-server/include"},
                                       {i,"deps/rabbitmq-erlang-client/include"}
-                                     ]) 
+                                     ])
                                    || M <- Modules ] ],
     case length(Modules) == length(Compiled) of
         true -> ok;
@@ -57,7 +59,7 @@ analyze_cover(Modules) ->
                   [], Modules),
     IndexFilename = filename:join([CoverBase, "index.html"]),
     {ok, Index} = file:open(IndexFilename, [write]),
-    {LineTotal, CoverTotal} = 
+    {LineTotal, CoverTotal} =
         lists:foldl(fun({_,_,Lines,Covered}, {LineAcc, CovAcc}) ->
                             {LineAcc+Lines, CovAcc+Covered}
                     end, {0,0}, Coverages),
@@ -77,7 +79,7 @@ analyze_cover(Modules) ->
     io:format("Cover analysis in ~s~n", [IndexFilename]).
 
 analyze_module(CoverBase, Module) ->
-    {ok, Filename} = 
+    {ok, Filename} =
         cover:analyze_to_file(
           Module,
           filename:join(CoverBase, atom_to_list(Module)++".COVER.html"),
