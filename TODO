@@ -1,9 +1,6 @@
 - allow registration by name?
-- have gen_bunny declare server resources, and if so, come up with API
-- monitor connection/channel pids? 
-- write wrapper module for dealing with rabbitmq messages
+- monitor connection/channel pids?
 - fill in boilerplate gen_bunny behavior with actual functionality
 - figure out how to deal with build-time dependency on the rabbitmq-server source
-- harvest useful bits from the rmq_* record wrappers and get rid of them
 - write unit tests
 - write documentation

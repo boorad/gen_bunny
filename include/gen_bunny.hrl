@@ -8,9 +8,6 @@
 -define(is_queue(X), element(1, X) =:= 'queue.declare').
 -define(is_exchange(X), element(1, X) =:= 'exchange.declare').
 -define(is_binding(X), element(1, X) =:= binding).
--define(is_channel(X), element(1, X) =:= rmq_channel).
--define(is_connection(X), element(1, X) =:= rmq_connection).
-
 -define(is_message(X), element(1, X) =:= content).
 
 %%
@@ -24,7 +21,7 @@
 -type(servobj_name() :: binary()).
 -type(exchange_type() :: binary()).
 -type(bunny_queue() :: #'queue.declare'{}).
--type(binding() :: #binding{}).      
+-type(binding() :: #binding{}).
 -type(durable_obj() :: exchange() | bunny_queue()).
 
 -endif. %% GEN_BUNNY_HRL_PREIFX
