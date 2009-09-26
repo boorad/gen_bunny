@@ -23,6 +23,7 @@
 -behavior(gen_bunny).
 
 -export([start_link/0,
+         start_link/3,
          init/1,
          handle_message/2,
          handle_call/3,
@@ -37,8 +38,11 @@
 -record(state, {messages=[]}).
 
 start_link() ->
-    gen_bunny:start_link(?MODULE, direct,
-                         <<"bunny.test">>, []).
+    start_link(direct, <<"bunny.test">>, []).
+
+start_link(Conn, Declare, Opts) ->
+    gen_bunny:start_link(?MODULE, Conn, Declare, Opts).
+
 
 init([]) ->
     {ok, #state{}}.

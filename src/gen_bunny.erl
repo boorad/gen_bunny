@@ -82,10 +82,12 @@ cast(Dest, Request) ->
     gen_server:cast(Dest, Request).
 
 
-init([Module, ConnectionInfo, DeclareInfo, InitArgs]) ->
-    case Module:init(InitArgs) of
+init([Module, ConnectionInfo, DeclareInfo, InitArgs0]) ->
+    {NoAck, InitArgs1} = get_opt(no_ack, InitArgs0, true),
+    case Module:init(InitArgs1) of
         {ok, ModState} ->
-            case connect_declare_subscribe(ConnectionInfo, DeclareInfo) of
+            case connect_declare_subscribe(
+                   ConnectionInfo, DeclareInfo, NoAck) of
                 {ok, ConnectionPid, ChannelPid, QueueName} ->
                     %% TODO:  monitor channel/connection pids?
                     {ok, #state{mod=Module,
@@ -187,7 +189,7 @@ code_change(_OldVersion, State, _Extra) ->
     {ok, State}.
 
 %% TODO: better error handling here.
-connect_declare_subscribe(ConnectionInfo, DeclareInfo) ->
+connect_declare_subscribe(ConnectionInfo, DeclareInfo, NoAck) ->
     %% TODO: link?
     case catch bunny_util:connect(ConnectionInfo) of
         {'EXIT', {Reason, _Stack}} ->
@@ -201,7 +203,14 @@ connect_declare_subscribe(ConnectionInfo, DeclareInfo) ->
                     QueueName = bunny_util:get_name(Queue),
                     lib_amqp:subscribe(ChannelPid,
                                        QueueName,
-                                       self()),
+                                       self(), NoAck),
                     {ok, ConnectionPid, ChannelPid, QueueName}
             end
     end.
+
+get_opt(Opt, Proplist) ->
+    get_opt(Opt, Proplist, undefined).
+
+get_opt(Opt, Proplist, Default) ->
+    {proplists:get_value(Opt, Proplist, Default),
+     proplists:delete(Opt, Proplist)}.
