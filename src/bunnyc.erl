@@ -28,7 +28,7 @@
 -include_lib("gen_bunny.hrl").
 
 -export([start_link/4]).
--export([publish/3]).
+-export([publish/3, get/2, ack/2]).
 
 -export([init/1,
          handle_call/3,
@@ -37,13 +37,22 @@
          terminate/2,
          code_change/3]).
 
--record(state, {connection, channel, exchange}).
+-record(state, {connection, channel, exchange, queue}).
 
 %%
 %% API
 %%
 publish(Name, Key, Payload) ->
     gen_server:call(Name, {publish, Key, Payload}).
+
+
+get(Name, NoAck) ->
+    gen_server:call(Name, {get, NoAck}).
+
+
+ack(Name, Tag) ->
+    gen_server:call(Name, {ack, Tag}).
+
 
 start_link(Name, ConnectionInfo, DeclareInfo, Args) ->
     gen_server:start_link({local, Name}, ?MODULE, [ConnectionInfo, DeclareInfo, Args], []).
@@ -55,17 +64,27 @@ start_link(Name, ConnectionInfo, DeclareInfo, Args) ->
 init([ConnectionInfo, DeclareInfo, _Args]) ->
     {ConnectionPid, ChannelPid} = bunny_util:connect(ConnectionInfo),
 
-    {Exchange, _Queue} = bunny_util:declare(ChannelPid, DeclareInfo),
+    {Exchange, Queue} = bunny_util:declare(ChannelPid, DeclareInfo),
 
     {ok, #state{connection=ConnectionPid,
                 channel=ChannelPid,
-                exchange=Exchange}}.
+                exchange=Exchange,
+                queue=Queue}}.
 
 
 handle_call({publish, Key, Payload}, _From,
             State = #state{channel=Channel, exchange=Exchange})
   when is_binary(Key), is_binary(Payload) ->
-    Resp = publish(Channel, Exchange, Key, Payload),
+    Resp = internal_publish(Channel, Exchange, Key, Payload),
+    {reply, Resp, State};
+
+handle_call({get, NoAck}, _From,
+            State = #state{channel=Channel, queue=Queue}) ->
+    Resp = internal_get(Channel, Queue, NoAck),
+    {reply, Resp, State};
+
+handle_call({ack, Tag}, _From, State = #state{channel=Channel}) ->
+    Resp = internal_ack(Channel, Tag),
     {reply, Resp, State};
 
 handle_call(_Request, _From, State) ->
@@ -90,6 +109,14 @@ code_change(_OldVersion, State, _Extra) ->
 %% Internal
 %%
 
-publish(Channel, Exchange, Key, Payload) ->
+internal_publish(Channel, Exchange, Key, Payload) ->
     lib_amqp:publish(Channel, bunny_util:get_name(Exchange), Key, Payload),
     ok.
+
+
+internal_get(Channel, Queue, NoAck) ->
+    lib_amqp:get(Channel, Queue, NoAck).
+
+
+internal_ack(Channel, DeliveryTag) ->
+    lib_amqp:ack(Channel, DeliveryTag).

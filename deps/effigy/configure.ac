@@ -1,1 +1,0 @@
-/Users/dreid/src/gen_bunny/deps/effigy/fw/template/erlang/./configure.ac

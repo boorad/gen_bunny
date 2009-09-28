@@ -41,6 +41,7 @@
 %---------------------------------------------------------------------------
 
 handshake(State = #connection_state{serverhost = Host, port = Port}) ->
+    io:format("network driver: ~p, ~p~n", [Host, inet:gethostbyname(Host)]),
     case gen_tcp:connect(Host, Port, [binary, {packet, 0}, {active, false},
                                       {nodelay, true}]) of
         {ok, Sock} ->

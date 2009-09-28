@@ -13,8 +13,8 @@ rabbitmq-server:
 rabbitmq-erlang-client:
 	@(cd deps/rabbitmq-erlang-client;$(MAKE) BROKER_DIR=../rabbitmq-server)
 
-effigy: 
-	@(cd deps/effigy;./configure && $(MAKE))
+effigy:
+	@(cd deps/effigy;./bootstarp && ./configure && $(MAKE))
 
 docs:
 	@erl -noshell -run edoc_run application '$(APP)' '"."' '[]'
