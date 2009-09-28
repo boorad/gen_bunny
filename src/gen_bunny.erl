@@ -84,9 +84,14 @@ cast(Dest, Request) ->
 
 init([Module, ConnectionInfo, DeclareInfo, InitArgs0]) ->
     {NoAck, InitArgs1} = get_opt(no_ack, InitArgs0, true),
-    case Module:init(InitArgs1) of
+    {ConnectFun, InitArgs2} = get_opt(connect_fun, InitArgs1,
+                                      fun bunny_util:connect/1),
+    {DeclareFun, InitArgs3} = get_opt(declare_fun, InitArgs2,
+                                      fun bunny_util:declare/2),
+    case Module:init(InitArgs3) of
         {ok, ModState} ->
             case connect_declare_subscribe(
+                   ConnectFun, DeclareFun,
                    ConnectionInfo, DeclareInfo, NoAck) of
                 {ok, ConnectionPid, ChannelPid, QueueName} ->
                     %% TODO:  monitor channel/connection pids?
@@ -189,14 +194,15 @@ code_change(_OldVersion, State, _Extra) ->
     {ok, State}.
 
 %% TODO: better error handling here.
-connect_declare_subscribe(ConnectionInfo, DeclareInfo, NoAck) ->
+connect_declare_subscribe(ConnectFun, DeclareFun,
+                          ConnectionInfo, DeclareInfo, NoAck) ->
     %% TODO: link?
-    case catch bunny_util:connect(ConnectionInfo) of
+    case catch ConnectFun(ConnectionInfo) of
         {'EXIT', {Reason, _Stack}} ->
             Reason;
         {ConnectionPid, ChannelPid} when is_pid(ConnectionPid),
                                          is_pid(ChannelPid) ->
-            case catch bunny_util:declare(ChannelPid, DeclareInfo) of
+            case catch DeclareFun(ChannelPid, DeclareInfo) of
                 {'EXIT', {Reason, _Stack}} ->
                     Reason;
                 {_Exchange, Queue} when ?is_queue(Queue) ->
@@ -214,3 +220,103 @@ get_opt(Opt, Proplist) ->
 get_opt(Opt, Proplist, Default) ->
     {proplists:get_value(Opt, Proplist, Default),
      proplists:delete(Opt, Proplist)}.
+
+
+%%
+%% Tests
+%%
+
+-include_lib("eunit/include/eunit.hrl").
+
+cds_setup() ->
+    {ok, _} = mock:mock(lib_amqp),
+    ok.
+
+cds_stop(_) ->
+    mock:verify_and_stop(lib_amqp),
+    ok.
+
+
+cds_expects(_DummyConn, DummyChannel, NoAck) ->
+    mock:expects(lib_amqp, subscribe,
+                 fun({Chan, <<"cds.test">>, _Pid, NA})
+                    when Chan =:= DummyChannel,
+                         NA =:= NoAck ->
+                         true
+                 end,
+                 ok),
+    ok.
+
+cds_funs(DummyConn, DummyChannel) ->
+    ConnectFun = fun(direct) ->
+                         {DummyConn, DummyChannel}
+                 end,
+
+    DeclareFun = fun(Chan, <<"cds.test">>) when Chan =:= DummyChannel ->
+                         {bunny_util:new_exchange(<<"cds.test">>),
+                          bunny_util:new_queue(<<"cds.test">>)}
+                 end,
+
+    {ConnectFun, DeclareFun}.
+
+
+cds_test_() ->
+    DummyConn = c:pid(0,0,0),
+    DummyChannel = c:pid(0,0,1),
+    {ConnectFun, DeclareFun} = cds_funs(DummyConn, DummyChannel),
+
+    {setup, fun cds_setup/0, fun cds_stop/1,
+     ?_test(
+        [begin
+             cds_expects(DummyConn, DummyChannel, false),
+             connect_declare_subscribe(ConnectFun, DeclareFun,
+                                       direct, <<"cds.test">>, false)
+         end])}.
+
+
+cds_noack_test_() ->
+    DummyConn = c:pid(0,0,0),
+    DummyChannel = c:pid(0,0,1),
+    {ConnectFun, DeclareFun} = cds_funs(DummyConn, DummyChannel),
+
+    {setup, fun cds_setup/0, fun cds_stop/1,
+     ?_test(
+        [begin
+             cds_expects(DummyConn, DummyChannel, true),
+             connect_declare_subscribe(ConnectFun, DeclareFun,
+                                       direct, <<"cds.test">>, true)
+         end])}.
+
+
+cds_conn_error_test_() ->
+    ConnectFun = fun(direct) ->
+                         {'EXIT', {{blah, "You suck"}, []}}
+                 end,
+
+    {setup, fun cds_setup/0, fun cds_stop/1,
+     ?_test(
+        [begin
+             ?assertEqual(
+                {blah, "You suck"},
+                connect_declare_subscribe(ConnectFun, fun() -> ok end,
+                                          direct, <<"cds.test">>, true))
+         end])}.
+
+
+cds_declare_error_test_() ->
+    DummyConn = c:pid(0,0,0),
+    DummyChannel = c:pid(0,0,1),
+    {ConnectFun, _} = cds_funs(DummyConn, DummyChannel),
+
+    DeclareFun = fun(Chan, <<"cds.test">>) when Chan =:= DummyChannel ->
+                         {'EXIT', {{blah, "I declare that you suck"}, []}}
+                 end,
+
+    {setup, fun cds_setup/0, fun cds_stop/1,
+     ?_test(
+        [begin
+             ?assertEqual(
+                {blah, "I declare that you suck"},
+                connect_declare_subscribe(ConnectFun, DeclareFun,
+                                          direct, <<"cds.test">>, true))
+         end])}.
