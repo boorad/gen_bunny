@@ -30,11 +30,11 @@
          handle_info/2,
          terminate/2]).
 
--export([get_messages/1]).
+-export([get_messages/1, get_calls/1, get_casts/1, get_infos/1]).
 
 -include_lib("gen_bunny.hrl").
 
--record(state, {messages=[]}).
+-record(state, {messages=[], calls=[], infos=[], casts=[]}).
 
 start_link(Opts) ->
     gen_bunny:start_link(?MODULE, direct, <<"bunny.test">>, Opts).
@@ -45,17 +45,36 @@ init([]) ->
 get_messages(Pid) ->
     gen_bunny:call(Pid, get_messages).
 
+get_calls(Pid) ->
+    gen_bunny:call(Pid, get_calls).
+
+get_casts(Pid) ->
+    gen_bunny:call(Pid, get_casts).
+
+get_infos(Pid) ->
+    gen_bunny:call(Pid, get_infos).
+
 handle_message(Message, State=#state{messages=Messages})
   when ?is_message(Message) ->
     NewMessages = [Message|Messages],
     {noreply, State#state{messages=NewMessages}}.
 
 handle_call(get_messages, _From, State=#state{messages=Messages}) ->
-    {reply, Messages, State}.
+    {reply, Messages, State};
+handle_call(get_calls, _From, State=#state{calls=Calls}) ->
+    {reply, Calls, State};
+handle_call(get_casts, _From, State=#state{casts=Casts}) ->
+    {reply, Casts, State};
+handle_call(get_infos, _From, State=#state{infos=Infos}) ->
+    {reply, Infos, State};
+handle_call(Msg, _From, State=#state{calls=Calls}) ->
+    {reply, ok, State#state{calls=[Msg|Calls]}}.
 
-handle_cast(_Msg, State) -> {noreply, State}.
+handle_cast(Msg, State=#state{casts=Casts}) ->
+    {noreply, State#state{casts=[Msg|Casts]}}.
 
-handle_info(_Info, State) -> {noreply, State}.
+handle_info(Info, State=#state{infos=Infos}) ->
+    {noreply, State#state{infos=[Info|Infos]}}.
 
 terminate(Reason, _State) ->
     io:format("~p terminating with reason ~p~n", [?MODULE, Reason]),

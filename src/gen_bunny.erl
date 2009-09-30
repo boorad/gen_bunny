@@ -158,12 +158,10 @@ handle_cast(Msg, State=#state{mod=Module, modstate=ModState}) ->
     end.
 
 handle_info({#'basic.deliver'{},
-            {content, _ClassId, _Props, _PropertiesBin, [Payload]}},
-            State=#state{mod=Module, modstate=ModState}) ->
-    %% TODO: figure out what fields we want to expose from the 'P_basic' record
-    %% TODO: decode_properties is failing for me - do we even need to do this?
-    %%#'P_basic'{} = rabbit_framing:decode_properties(ClassId, PropertiesBin),
-    case Module:handle_message(Payload, ModState) of
+             Message},
+            State=#state{mod=Module, modstate=ModState})
+  when ?is_message(Message) ->
+    case Module:handle_message(Message, ModState) of
         {noreply, NewModState} ->
             {noreply, State#state{modstate=NewModState}};
         {noreply, NewModState, A} when A =:= hibernate orelse is_number(A) ->
@@ -370,7 +368,7 @@ test_gb_setup() ->
 
 test_gb_stop(Pid) ->
     gen_bunny:stop(Pid),
-    timer:sleep(500), %% I hate this.
+    timer:sleep(100), %% I hate this.
     mock:verify_and_stop(lib_amqp),
     ok.
 
@@ -381,6 +379,55 @@ test_gb_start_link_test_() ->
              ?_test(
                 [begin
                      ?assertEqual(c:pid(0,0,0), gen_bunny:get_connection(Pid)),
-                     ?assertEqual(c:pid(0,0,1), gen_bunny:get_channel(Pid))
+                     ?assertEqual(c:pid(0,0,1), gen_bunny:get_channel(Pid)),
+                     ?assertEqual(<<"bunny.consumer">>,
+                                  gen_bunny:get_consumer_tag(Pid))
+                 end])
+     end}.
+
+
+test_gb_handle_message_test_() ->
+    {setup, fun test_gb_setup/0, fun test_gb_stop/1,
+     fun(Pid) ->
+             ?_test(
+                [begin
+                     ExpectedMessage = bunny_util:new_message(<<"Testing">>),
+                     Pid ! {#'basic.deliver'{}, ExpectedMessage},
+                     ?assertEqual([ExpectedMessage],
+                                  test_gb:get_messages(Pid))
+                 end])
+     end}.
+
+
+test_gb_call_passthrough_test_() ->
+    {setup, fun test_gb_setup/0, fun test_gb_stop/1,
+     fun(Pid) ->
+             ?_test(
+                [begin
+                     ok = gen_bunny:call(Pid, test),
+                     ?assertEqual([test], test_gb:get_calls(Pid))
+                 end])
+     end}.
+
+
+test_gb_cast_passthrough_test_() ->
+    {setup, fun test_gb_setup/0, fun test_gb_stop/1,
+     fun(Pid) ->
+             ?_test(
+                [begin
+                     gen_bunny:cast(Pid, cast_test),
+                     timer:sleep(100),
+                     ?assertEqual([cast_test], test_gb:get_casts(Pid))
+                 end])
+     end}.
+
+
+test_gb_info_passthrough_test_() ->
+    {setup, fun test_gb_setup/0, fun test_gb_stop/1,
+     fun(Pid) ->
+             ?_test(
+                [begin
+                     Pid ! info_test,
+                     ?assertEqual([info_test], test_gb:get_infos(Pid))
                  end])
      end}.
