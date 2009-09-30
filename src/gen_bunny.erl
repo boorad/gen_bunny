@@ -320,3 +320,67 @@ cds_declare_error_test_() ->
                 connect_declare_subscribe(ConnectFun, DeclareFun,
                                           direct, <<"cds.test">>, true))
          end])}.
+
+
+test_gb_setup() ->
+    {ok, _} = mock:mock(lib_amqp),
+
+    ConnectionPid = c:pid(0,0,0),
+    ChannelPid = c:pid(0,0,1),
+
+    mock:expects(lib_amqp, subscribe,
+                 fun({Channel, <<"bunny.test">>, _Pid, true})
+                    when Channel =:= ChannelPid ->
+                         true
+                 end,
+                 ok),
+
+    mock:expects(lib_amqp, unsubscribe,
+                 fun({Channel, <<"bunny.consumer">>})
+                    when Channel =:= ChannelPid ->
+                         true
+                 end,
+                 ok),
+
+    mock:expects(lib_amqp, teardown,
+                 fun({Connection, Channel})
+                    when Connection =:= ConnectionPid,
+                         Channel =:= ChannelPid ->
+                         true
+                 end,
+                 ok),
+
+    ConnectFun = fun(direct) ->
+                         {ConnectionPid, ChannelPid}
+                 end,
+
+    DeclareFun = fun(Channel, <<"bunny.test">>)
+                    when Channel =:= ChannelPid ->
+                         {bunny_util:new_exchange(<<"bunny.test">>),
+                          bunny_util:new_queue(<<"bunny.test">>)}
+                 end,
+
+    {ok, Pid} = test_gb:start_link([{connect_fun, ConnectFun},
+                                    {declare_fun, DeclareFun}]),
+
+    Pid ! #'basic.consume_ok'{consumer_tag = <<"bunny.consumer">>},
+
+    Pid.
+
+
+test_gb_stop(Pid) ->
+    gen_bunny:stop(Pid),
+    timer:sleep(500), %% I hate this.
+    mock:verify_and_stop(lib_amqp),
+    ok.
+
+
+test_gb_start_link_test_() ->
+    {setup, fun test_gb_setup/0, fun test_gb_stop/1,
+     fun(Pid) ->
+             ?_test(
+                [begin
+                     ?assertEqual(c:pid(0,0,0), gen_bunny:get_connection(Pid)),
+                     ?assertEqual(c:pid(0,0,1), gen_bunny:get_channel(Pid))
+                 end])
+     end}.
