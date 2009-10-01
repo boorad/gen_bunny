@@ -1,3 +1,5 @@
+- Add a gen_bunny API for acking using the current channel.
+- gen_bunny flow control.
 - allow registration by name?
 - monitor connection/channel pids?
 - fill in boilerplate gen_bunny behavior with actual functionality
