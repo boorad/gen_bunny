@@ -212,9 +212,6 @@ connect_declare_subscribe(ConnectFun, DeclareFun,
             end
     end.
 
-get_opt(Opt, Proplist) ->
-    get_opt(Opt, Proplist, undefined).
-
 get_opt(Opt, Proplist, Default) ->
     {proplists:get_value(Opt, Proplist, Default),
      proplists:delete(Opt, Proplist)}.
@@ -296,7 +293,7 @@ cds_conn_error_test_() ->
         [begin
              ?assertEqual(
                 {blah, "You suck"},
-                connect_declare_subscribe(ConnectFun, fun() -> ok end,
+                connect_declare_subscribe(ConnectFun, noop,
                                           direct, <<"cds.test">>, true))
          end])}.
 
@@ -431,3 +428,20 @@ test_gb_info_passthrough_test_() ->
                      ?assertEqual([info_test], test_gb:get_infos(Pid))
                  end])
      end}.
+
+
+%% These are mostly to placate cover.
+
+behaviour_info_test() ->
+    ?assertEqual(lists:sort([{init, 1},
+                             {handle_message, 2},
+                             {handle_call, 3},
+                             {handle_cast, 2},
+                             {handle_info, 2},
+                             {terminate, 2}]),
+                 lists:sort(gen_bunny:behaviour_info(callbacks))),
+    ?assertEqual(undefined, gen_bunny:behaviour_info(ign)).
+
+
+code_change_test() ->
+    ?assertEqual({ok, #state{}}, gen_bunny:code_change(ign, #state{}, ign)).

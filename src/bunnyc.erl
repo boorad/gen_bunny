@@ -28,7 +28,12 @@
 -include_lib("gen_bunny.hrl").
 
 -export([start_link/4, stop/1]).
--export([publish/3, publish/4, get/2, ack/2]).
+-export([publish/3,
+         publish/4,
+         async_publish/3,
+         async_publish/4,
+         get/2,
+         ack/2]).
 
 -export([init/1,
          handle_call/3,
@@ -43,9 +48,17 @@
 %% API
 %%
 publish(Name, Key, Message) ->
-    gen_server:call(Name, {publish, Key, Message, []}).
+    publish(Name, Key, Message, []).
+
 publish(Name, Key, Message, Opts) ->
     gen_server:call(Name, {publish, Key, Message, Opts}).
+
+
+async_publish(Name, Key, Message) ->
+    async_publish(Name, Key, Message, []).
+
+async_publish(Name, Key, Message, Opts) ->
+    gen_server:cast(Name, {publish, Key, Message, Opts}).
 
 
 get(Name, NoAck) ->
@@ -88,7 +101,8 @@ handle_call({publish, Key, Message, Opts}, _From,
             State = #state{channel=Channel, exchange=Exchange})
   when is_binary(Key), is_binary(Message) orelse ?is_message(Message),
        is_list(Opts) ->
-    Resp = internal_publish(Channel, Exchange, Key, Message, Opts),
+    Resp = internal_publish(fun amqp_channel:call/3,
+                            Channel, Exchange, Key, Message, Opts),
     {reply, Resp, State};
 
 handle_call({get, NoAck}, _From,
@@ -106,6 +120,13 @@ handle_call(stop, _From,
     lib_amqp:close_connection(Connection),
     {stop, normal, ok, State}.
 
+handle_cast({publish, Key, Message, Opts},
+            State = #state{channel=Channel, exchange=Exchange})
+  when is_binary(Key), is_binary(Message) orelse ?is_message(Message),
+       is_list(Opts) ->
+    internal_publish(fun amqp_channel:cast/3,
+                     Channel, Exchange, Key, Message, Opts),
+    {noreply, State};
 
 handle_cast(_Request, State) ->
     {noreply, State}.
@@ -124,7 +145,7 @@ code_change(_OldVersion, State, _Extra) ->
 %%
 %% Internal
 %%
-internal_publish(Channel, Exchange, Key, Message, Opts)
+internal_publish(Fun, Channel, Exchange, Key, Message, Opts)
   when ?is_message(Message) ->
     Mandatory = proplists:get_value(mandatory, Opts, false),
 
@@ -133,11 +154,10 @@ internal_publish(Channel, Exchange, Key, Message, Opts)
       routing_key = Key,
       mandatory = Mandatory},
 
-    amqp_channel:call(Channel, BasicPublish, Message),
-    ok;
-internal_publish(Channel, Exchange, Key, Message, Opts)
+    Fun(Channel, BasicPublish, Message);
+internal_publish(Fun, Channel, Exchange, Key, Message, Opts)
   when is_binary(Message) ->
-    internal_publish(Channel, Exchange, Key,
+    internal_publish(Fun, Channel, Exchange, Key,
                      bunny_util:new_message(Message), Opts).
 
 
@@ -244,6 +264,27 @@ publish_test_() ->
          end])}.
 
 
+async_publish_test_() ->
+    {setup, fun normal_setup/0, fun normal_stop/1,
+     ?_test(
+        [begin
+             mock:expects(
+               amqp_channel, cast,
+               fun({dummy_channel, #'basic.publish'{
+                      exchange = <<"bunnyc.test">>,
+                      routing_key = <<"bunnyc.test">>},
+                    Message}) when ?is_message(Message) ->
+                       bunny_util:get_payload(Message) =:= <<"HELLO GOODBYE">>
+               end,
+               ok),
+
+             ?assertEqual(ok, bunnyc:async_publish(
+                                bunnyc_test,
+                                <<"bunnyc.test">>,
+                                <<"HELLO GOODBYE">>))
+         end])}.
+
+
 publish_message_test_() ->
     {setup, fun normal_setup/0, fun normal_stop/1,
      ?_test(
@@ -269,6 +310,31 @@ publish_message_test_() ->
          end])}.
 
 
+async_publish_message_test_() ->
+    {setup, fun normal_setup/0, fun normal_stop/1,
+     ?_test(
+        [begin
+             ExpectedMessage = bunny_util:set_delivery_mode(
+                                 bunny_util:new_message(<<"HELLO">>),
+                                 2),
+
+             mock:expects(
+               amqp_channel, cast,
+               fun({dummy_channel, #'basic.publish'{exchange=Exchange,
+                                                    routing_key=Key},
+                    Message}) when ?is_message(Message) ->
+                       Exchange =:= <<"bunnyc.test">>
+                           andalso Key =:= <<"bunnyc.test">>
+                           andalso ExpectedMessage =:= Message
+               end,
+               ok),
+             ?assertEqual(ok, bunnyc:async_publish(
+                                bunnyc_test,
+                                <<"bunnyc.test">>,
+                                ExpectedMessage))
+         end])}.
+
+
 publish_mandatory_test_() ->
     {setup, fun normal_setup/0, fun normal_stop/1,
      ?_test(
@@ -285,6 +351,28 @@ publish_mandatory_test_() ->
                ok),
 
              ?assertEqual(ok, bunnyc:publish(
+                                bunnyc_test,
+                                <<"bunnyc.test">>,
+                                <<"HELLO GOODBYE">>, [{mandatory, true}]))
+         end])}.
+
+
+async_publish_mandatory_test_() ->
+    {setup, fun normal_setup/0, fun normal_stop/1,
+     ?_test(
+        [begin
+             mock:expects(
+               amqp_channel, cast,
+               fun({dummy_channel, #'basic.publish'{
+                      exchange = <<"bunnyc.test">>,
+                      routing_key = <<"bunnyc.test">>,
+                      mandatory = true},
+                    Message}) when ?is_message(Message) ->
+                       bunny_util:get_payload(Message) =:= <<"HELLO GOODBYE">>
+               end,
+               ok),
+
+             ?assertEqual(ok, bunnyc:async_publish(
                                 bunnyc_test,
                                 <<"bunnyc.test">>,
                                 <<"HELLO GOODBYE">>, [{mandatory, true}]))
@@ -332,3 +420,19 @@ ack_test_() ->
                           ok),
              ?assertEqual(ok, bunnyc:ack(bunnyc_test, <<"sometag">>))
          end])}.
+
+
+%% These are mostly to placate cover.
+
+unknown_cast_test() ->
+    ?assertEqual({noreply, #state{}},
+                 bunnyc:handle_cast(unknown_cast, #state{})).
+
+
+unknown_info_test() ->
+    ?assertEqual({noreply, #state{}},
+                 bunnyc:handle_info(unknown_info, #state{})).
+
+
+code_change_test() ->
+    ?assertEqual({ok, #state{}}, bunnyc:code_change(ign, #state{}, ign)).
