@@ -68,9 +68,9 @@
 %% @doc Construct a new message with a binary Payload.
 -spec(new_message(payload()) -> message()).
 new_message(Payload) when is_binary(Payload) ->
-    #content{
-             class_id=60,
-             properties= #'P_basic'{},
+    #content{class_id=60,
+             properties= amqp_util:basic_properties(),
+             properties_bin=none,
              payload_fragments_rev=[Payload]}.
 
 %% @spec get_payload(Message::message()) -> payload()

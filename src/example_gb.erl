@@ -59,7 +59,9 @@ handle_call(get_messages, _From, State=#state{messages=Messages}) ->
 
 handle_cast(_Msg, State) -> {noreply, State}.
 
-handle_info(_Info, State) -> {noreply, State}.
+handle_info(Info, State) ->
+    io:format("Unknown message: ~p~n", [Info]),
+    {noreply, State}.
 
 terminate(Reason, _State) ->
     io:format("~p terminating with reason ~p~n", [?MODULE, Reason]),

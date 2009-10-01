@@ -9,6 +9,9 @@
 -define(is_exchange(X), element(1, X) =:= 'exchange.declare').
 -define(is_binding(X), element(1, X) =:= binding).
 -define(is_message(X), element(1, X) =:= content).
+-define(is_tagged_message(X),
+        (is_integer(element(1, X)) andalso
+         ?is_message(element(2, X)))).
 
 %%
 %% -types() - EDoc really needs to learn to read these.

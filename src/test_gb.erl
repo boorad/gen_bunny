@@ -55,7 +55,7 @@ get_infos(Pid) ->
     gen_bunny:call(Pid, get_infos).
 
 handle_message(Message, State=#state{messages=Messages})
-  when ?is_message(Message) ->
+  when ?is_message(Message) orelse ?is_tagged_message(Message) ->
     NewMessages = [Message|Messages],
     {noreply, State#state{messages=NewMessages}}.
 
