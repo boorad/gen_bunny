@@ -30,7 +30,7 @@
          handle_info/2,
          terminate/2]).
 
--export([get_messages/1, get_calls/1, get_casts/1, get_infos/1]).
+-export([ack_stuff/2, get_messages/1, get_calls/1, get_casts/1, get_infos/1]).
 
 -include_lib("gen_bunny.hrl").
 
@@ -41,6 +41,11 @@ start_link(Opts) ->
 
 init([]) ->
     {ok, #state{}}.
+
+-include_lib("eunit/include/eunit.hrl").
+
+ack_stuff(Pid, Tag) ->
+    gen_bunny:cast(Pid, {ack_stuff, Tag}).
 
 get_messages(Pid) ->
     gen_bunny:call(Pid, get_messages).
@@ -70,6 +75,9 @@ handle_call(get_infos, _From, State=#state{infos=Infos}) ->
 handle_call(Msg, _From, State=#state{calls=Calls}) ->
     {reply, ok, State#state{calls=[Msg|Calls]}}.
 
+handle_cast({ack_stuff, Tag}, State) ->
+    gen_bunny:ack(Tag),
+    {noreply, State};
 handle_cast(Msg, State=#state{casts=Casts}) ->
     {noreply, State#state{casts=[Msg|Casts]}}.
 

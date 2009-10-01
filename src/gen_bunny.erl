@@ -43,6 +43,8 @@
 -export([get_connection/1,
          get_channel/1,
          get_consumer_tag/1,
+         ack/1,
+         ack/2,
          stop/1]).
 
 -record(state, {mod,
@@ -123,6 +125,12 @@ get_channel(Pid) when is_pid(Pid) ->
 get_consumer_tag(Pid) when is_pid(Pid) ->
     gen_server:call(Pid, get_consumer_tag).
 
+ack(Tag) ->
+    ack(self(), Tag).
+
+ack(Pid, Tag) when is_pid(Pid), is_integer(Tag) ->
+    gen_server:cast(Pid, {ack, Tag}).
+
 handle_call(get_connection, _From, State=#state{connection=Connection}) ->
     {reply, Connection, State};
 handle_call(get_channel, _From, State=#state{channel=Channel}) ->
@@ -149,6 +157,9 @@ handle_cast(stop, State=#state{channel=Channel, consumer_tag=CTag, connection=Co
     ok = lib_amqp:unsubscribe(Channel, CTag),
     ok = lib_amqp:teardown(Connection, Channel),
     {stop, normal, State};
+handle_cast({ack, Tag}, State=#state{channel=Channel}) ->
+    lib_amqp:ack(Channel, Tag),
+    {noreply, State};
 handle_cast(Msg, State=#state{mod=Module, modstate=ModState}) ->
     case Module:handle_cast(Msg, ModState) of
         {noreply, NewModState} ->
@@ -381,7 +392,7 @@ test_gb_setup() ->
     test_gb_setup_1(true).
 
 
-test_gb_noack_setup() ->
+test_gb_noack_false_setup() ->
     test_gb_setup_1(false).
 
 
@@ -439,8 +450,8 @@ test_gb_handle_message_decode_properties_test_() ->
      end}.
 
 
-test_gb_handle_message_noack_test_() ->
-    {setup, fun test_gb_noack_setup/0, fun test_gb_stop/1,
+test_gb_handle_message_noack_false_test_() ->
+    {setup, fun test_gb_noack_false_setup/0, fun test_gb_stop/1,
      fun(Pid) ->
              ?_test(
                 [begin
@@ -459,6 +470,43 @@ test_gb_handle_message_noack_test_() ->
                  end])
      end}.
 
+
+test_gb_ack_test_() ->
+    {setup, fun test_gb_noack_false_setup/0, fun test_gb_stop/1,
+     fun(Pid) ->
+             ?_test(
+                [begin
+                     ChannelPid = c:pid(0,0,1),
+                     mock:expects(lib_amqp, ack,
+                                  fun({Channel, Tag})
+                                     when Channel =:= ChannelPid,
+                                          Tag =:= 1 ->
+                                          true
+                                  end,
+                                  ok),
+                     ?assertEqual(ok, gen_bunny:ack(Pid, 1))
+                 end])
+     end}.
+
+
+test_gb_self_ack_test_() ->
+    {setup, fun test_gb_noack_false_setup/0, fun test_gb_stop/1,
+     fun(Pid) ->
+             ?_test(
+                [begin
+                     ChannelPid = c:pid(0,0,1),
+                     mock:expects(lib_amqp, ack,
+                                  fun({Channel, Tag})
+                                     when Channel =:= ChannelPid,
+                                          Tag =:= 1 ->
+                                          true
+                                  end,
+                                  ok),
+                     %% Ack in a round about way so that we can test
+                     %% gen_bunny:ack/1
+                     ?assertEqual(ok, test_gb:ack_stuff(Pid, 1))
+                 end])
+     end}.
 
 test_gb_call_passthrough_test_() ->
     {setup, fun test_gb_setup/0, fun test_gb_stop/1,

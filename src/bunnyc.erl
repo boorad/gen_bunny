@@ -66,7 +66,7 @@ get(Name, NoAck) ->
 
 
 ack(Name, Tag) ->
-    gen_server:call(Name, {ack, Tag}).
+    gen_server:cast(Name, {ack, Tag}).
 
 
 start_link(Name, ConnectionInfo, DeclareInfo, Args) ->
@@ -110,10 +110,6 @@ handle_call({get, NoAck}, _From,
     Resp = internal_get(Channel, Queue, NoAck),
     {reply, Resp, State};
 
-handle_call({ack, Tag}, _From, State = #state{channel=Channel}) ->
-    Resp = internal_ack(Channel, Tag),
-    {reply, Resp, State};
-
 handle_call(stop, _From,
             State = #state{channel=Channel, connection=Connection}) ->
     lib_amqp:close_channel(Channel),
@@ -126,6 +122,10 @@ handle_cast({publish, Key, Message, Opts},
        is_list(Opts) ->
     internal_publish(fun amqp_channel:cast/3,
                      Channel, Exchange, Key, Message, Opts),
+    {noreply, State};
+
+handle_cast({ack, Tag}, State = #state{channel=Channel}) ->
+    internal_ack(Channel, Tag),
     {noreply, State};
 
 handle_cast(_Request, State) ->
