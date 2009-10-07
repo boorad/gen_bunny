@@ -97,6 +97,8 @@ init([Module, ConnectionInfo, DeclareInfo, InitArgs0]) ->
                    ConnectFun, DeclareFun,
                    ConnectionInfo, DeclareInfo, NoAck) of
                 {ok, ConnectionPid, ChannelPid, QueueName} ->
+                    true = link(ConnectionPid),
+                    true = link(ChannelPid),
                     %% TODO:  monitor channel/connection pids?
                     {ok, #state{mod=Module,
                                 modstate=ModState,
@@ -343,28 +345,13 @@ cds_declare_error_test_() ->
 test_gb_setup_1(NoAck) ->
     {ok, _} = mock:mock(lib_amqp),
 
-    ConnectionPid = c:pid(0,0,0),
-    ChannelPid = c:pid(0,0,1),
+    ConnectionPid = spawn_fake_proc(self()),
+    ChannelPid = spawn_fake_proc(self()),
 
     mock:expects(lib_amqp, subscribe,
                  fun({Channel, <<"bunny.test">>, _Pid, NA})
                     when Channel =:= ChannelPid,
                          NA =:= NoAck ->
-                         true
-                 end,
-                 ok),
-
-    mock:expects(lib_amqp, unsubscribe,
-                 fun({Channel, <<"bunny.consumer">>})
-                    when Channel =:= ChannelPid ->
-                         true
-                 end,
-                 ok),
-
-    mock:expects(lib_amqp, teardown,
-                 fun({Connection, Channel})
-                    when Connection =:= ConnectionPid,
-                         Channel =:= ChannelPid ->
                          true
                  end,
                  ok),
@@ -379,13 +366,13 @@ test_gb_setup_1(NoAck) ->
                           bunny_util:new_queue(<<"bunny.test">>)}
                  end,
 
-    {ok, Pid} = test_gb:start_link([{connect_fun, ConnectFun},
-                                    {declare_fun, DeclareFun},
-                                    {no_ack, NoAck}]),
+    {ok, TestPid} = test_gb:start_link([{connect_fun, ConnectFun},
+                                        {declare_fun, DeclareFun},
+                                        {no_ack, NoAck}]),
 
-    Pid ! #'basic.consume_ok'{consumer_tag = <<"bunny.consumer">>},
+    TestPid ! #'basic.consume_ok'{consumer_tag = <<"bunny.consumer">>},
 
-    Pid.
+    {ConnectionPid, ChannelPid, TestPid}.
 
 
 test_gb_setup() ->
@@ -396,8 +383,27 @@ test_gb_noack_false_setup() ->
     test_gb_setup_1(false).
 
 
-test_gb_stop(Pid) ->
-    gen_bunny:stop(Pid),
+test_gb_stop({ConnectionPid, ChannelPid, TestPid}) ->
+    mock:expects(lib_amqp, unsubscribe,
+                 fun({Channel, <<"bunny.consumer">>})
+                    when Channel =:= ChannelPid ->
+                         true
+                 end,
+                 ok),
+
+    mock:expects(lib_amqp, teardown,
+                 fun({Connection, Channel})
+                    when Connection =:= ConnectionPid,
+                         Channel =:= ChannelPid ->
+                         true
+                 end,
+                 ok),
+    gen_bunny:stop(TestPid),
+    timer:sleep(100), %% I hate this.
+    mock:verify_and_stop(lib_amqp),
+    ok.
+
+test_gb_stop_nostop({_ConnectionPid, _ChannelPid, _TestPid}) ->
     timer:sleep(100), %% I hate this.
     mock:verify_and_stop(lib_amqp),
     ok.
@@ -405,33 +411,33 @@ test_gb_stop(Pid) ->
 
 test_gb_start_link_test_() ->
     {setup, fun test_gb_setup/0, fun test_gb_stop/1,
-     fun(Pid) ->
+     fun({ConnectionPid, ChannelPid, TestPid}) ->
              ?_test(
                 [begin
-                     ?assertEqual(c:pid(0,0,0), gen_bunny:get_connection(Pid)),
-                     ?assertEqual(c:pid(0,0,1), gen_bunny:get_channel(Pid)),
+                     ?assertEqual(ConnectionPid, gen_bunny:get_connection(TestPid)),
+                     ?assertEqual(ChannelPid, gen_bunny:get_channel(TestPid)),
                      ?assertEqual(<<"bunny.consumer">>,
-                                  gen_bunny:get_consumer_tag(Pid))
+                                  gen_bunny:get_consumer_tag(TestPid))
                  end])
      end}.
 
 
 test_gb_handle_message_test_() ->
     {setup, fun test_gb_setup/0, fun test_gb_stop/1,
-     fun(Pid) ->
+     fun({_ConnectionPid, _ChannelPid, TestPid}) ->
              ?_test(
                 [begin
                      ExpectedMessage = bunny_util:new_message(<<"Testing">>),
-                     Pid ! {#'basic.deliver'{}, ExpectedMessage},
+                     TestPid ! {#'basic.deliver'{}, ExpectedMessage},
                      ?assertEqual([ExpectedMessage],
-                                  test_gb:get_messages(Pid))
+                                  test_gb:get_messages(TestPid))
                  end])
      end}.
 
 
 test_gb_handle_message_decode_properties_test_() ->
     {setup, fun test_gb_setup/0, fun test_gb_stop/1,
-     fun(Pid) ->
+     fun({_ConnectionPid, _ChannelPid, TestPid}) ->
              ?_test(
                 [begin
                      ExpectedMessage = {
@@ -444,15 +450,15 @@ test_gb_handle_message_decode_properties_test_() ->
                        <<152,0,24,97,112,112,108,105,99,97,116,105,111,110,
                         47,111,99,116,101,116,45,115,116,114,101,97,109,1,0>>,
                        [<<"zomgasdfasdf">>]},
-                     Pid ! {#'basic.deliver'{}, RawMessage},
-                     ?assertEqual([ExpectedMessage], test_gb:get_messages(Pid))
+                     TestPid ! {#'basic.deliver'{}, RawMessage},
+                     ?assertEqual([ExpectedMessage], test_gb:get_messages(TestPid))
                  end])
      end}.
 
 
 test_gb_handle_message_noack_false_test_() ->
     {setup, fun test_gb_noack_false_setup/0, fun test_gb_stop/1,
-     fun(Pid) ->
+     fun({_ConnectionPid, _ChannelPid, TestPid}) ->
              ?_test(
                 [begin
                      ExpectedMessage = {1, {
@@ -465,18 +471,17 @@ test_gb_handle_message_noack_false_test_() ->
                        <<152,0,24,97,112,112,108,105,99,97,116,105,111,110,
                         47,111,99,116,101,116,45,115,116,114,101,97,109,1,0>>,
                        [<<"zomgasdfasdf">>]},
-                     Pid ! {#'basic.deliver'{delivery_tag=1}, RawMessage},
-                     ?assertEqual([ExpectedMessage], test_gb:get_messages(Pid))
+                     TestPid ! {#'basic.deliver'{delivery_tag=1}, RawMessage},
+                     ?assertEqual([ExpectedMessage], test_gb:get_messages(TestPid))
                  end])
      end}.
 
 
 test_gb_ack_test_() ->
     {setup, fun test_gb_noack_false_setup/0, fun test_gb_stop/1,
-     fun(Pid) ->
+     fun({_ConnectionPid, ChannelPid, TestPid}) ->
              ?_test(
                 [begin
-                     ChannelPid = c:pid(0,0,1),
                      mock:expects(lib_amqp, ack,
                                   fun({Channel, Tag})
                                      when Channel =:= ChannelPid,
@@ -484,17 +489,16 @@ test_gb_ack_test_() ->
                                           true
                                   end,
                                   ok),
-                     ?assertEqual(ok, gen_bunny:ack(Pid, 1))
+                     ?assertEqual(ok, gen_bunny:ack(TestPid, 1))
                  end])
      end}.
 
 
 test_gb_self_ack_test_() ->
     {setup, fun test_gb_noack_false_setup/0, fun test_gb_stop/1,
-     fun(Pid) ->
+     fun({_ConnectionPid, ChannelPid, TestPid}) ->
              ?_test(
                 [begin
-                     ChannelPid = c:pid(0,0,1),
                      mock:expects(lib_amqp, ack,
                                   fun({Channel, Tag})
                                      when Channel =:= ChannelPid,
@@ -504,40 +508,40 @@ test_gb_self_ack_test_() ->
                                   ok),
                      %% Ack in a round about way so that we can test
                      %% gen_bunny:ack/1
-                     ?assertEqual(ok, test_gb:ack_stuff(Pid, 1))
+                     ?assertEqual(ok, test_gb:ack_stuff(TestPid, 1))
                  end])
      end}.
 
 test_gb_call_passthrough_test_() ->
     {setup, fun test_gb_setup/0, fun test_gb_stop/1,
-     fun(Pid) ->
+     fun({_ConnectionPid, _ChannelPid, TestPid}) ->
              ?_test(
                 [begin
-                     ok = gen_bunny:call(Pid, test),
-                     ?assertEqual([test], test_gb:get_calls(Pid))
+                     ok = gen_bunny:call(TestPid, test),
+                     ?assertEqual([test], test_gb:get_calls(TestPid))
                  end])
      end}.
 
 
 test_gb_cast_passthrough_test_() ->
     {setup, fun test_gb_setup/0, fun test_gb_stop/1,
-     fun(Pid) ->
+     fun({_ConnectionPid, _ChannelPid, TestPid}) ->
              ?_test(
                 [begin
-                     gen_bunny:cast(Pid, cast_test),
+                     gen_bunny:cast(TestPid, cast_test),
                      timer:sleep(100),
-                     ?assertEqual([cast_test], test_gb:get_casts(Pid))
+                     ?assertEqual([cast_test], test_gb:get_casts(TestPid))
                  end])
      end}.
 
 
 test_gb_info_passthrough_test_() ->
     {setup, fun test_gb_setup/0, fun test_gb_stop/1,
-     fun(Pid) ->
+     fun({_ConnectionPid, _ChannelPid, TestPid}) ->
              ?_test(
                 [begin
-                     Pid ! info_test,
-                     ?assertEqual([info_test], test_gb:get_infos(Pid))
+                     TestPid ! info_test,
+                     ?assertEqual([info_test], test_gb:get_infos(TestPid))
                  end])
      end}.
 
@@ -557,3 +561,31 @@ behaviour_info_test() ->
 
 code_change_test() ->
     ?assertEqual({ok, #state{}}, gen_bunny:code_change(ign, #state{}, ign)).
+
+channel_link_test_() ->
+    {setup, fun test_gb_setup/0, fun test_gb_stop_nostop/1,
+     fun({_ConnectionPid, ChannelPid, TestPid}) ->
+             process_flag(trap_exit, true),
+             exit(ChannelPid, kill),
+             receive
+                 {'EXIT', TestPid, killed}  ->
+                     ok
+             end,
+             process_flag(trap_exit, false),
+             ?assertEqual(false, erlang:is_process_alive(TestPid))
+     end}.
+
+    
+fake_proc(Pid) ->
+    receive
+        _ ->
+            ok
+    after 1000 ->
+            fake_proc(Pid)
+    end.
+
+spawn_fake_proc(Pid) ->
+    spawn(fun() -> fake_proc(Pid) end).
+    
+
+           
