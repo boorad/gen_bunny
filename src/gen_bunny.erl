@@ -47,14 +47,19 @@
          ack/2,
          stop/1]).
 
--record(state, {mod,
+-record(state, {declare_fun,
+                connect_fun,
+                mod,
                 modstate,
                 channel,
                 connection,
                 queue,
+                connection_info,
                 declare_info,
                 consumer_tag,
-                no_ack}).
+                no_ack,
+                channel_mon,
+                connection_mon}).
 
 behaviour_info(callbacks) ->
     [{init, 1},
@@ -91,22 +96,27 @@ init([Module, ConnectionInfo, DeclareInfo, InitArgs0]) ->
                                       fun bunny_util:connect/1),
     {DeclareFun, InitArgs3} = get_opt(declare_fun, InitArgs2,
                                       fun bunny_util:declare/2),
+
     case Module:init(InitArgs3) of
         {ok, ModState} ->
             case connect_declare_subscribe(
                    ConnectFun, DeclareFun,
                    ConnectionInfo, DeclareInfo, NoAck) of
                 {ok, ConnectionPid, ChannelPid, QueueName} ->
-                    true = link(ConnectionPid),
-                    true = link(ChannelPid),
-                    %% TODO:  monitor channel/connection pids?
-                    {ok, #state{mod=Module,
+                    ChannelRef = erlang:monitor(process, ChannelPid),
+                    ConnectionRef = erlang:monitor(process, ConnectionPid),
+                    {ok, #state{connect_fun=ConnectFun,
+                                declare_fun=DeclareFun,
+                                mod=Module,
                                 modstate=ModState,
                                 channel=ChannelPid,
                                 connection=ConnectionPid,
+                                connection_info=ConnectionInfo,
                                 declare_info=DeclareInfo,
                                 queue=QueueName,
-                                no_ack=NoAck}};
+                                no_ack=NoAck,
+                                channel_mon=ChannelRef,
+                                connection_mon=ConnectionRef}};
                 {_ErrClass, {error, Reason}} ->
                     Module:terminate(Reason, ModState),
                     {stop, Reason}
@@ -195,6 +205,46 @@ handle_info({Envelope=#'basic.deliver'{},
     end;
 handle_info(#'basic.consume_ok'{consumer_tag=CTag}, State=#state{}) ->
     {noreply, State#state{consumer_tag=CTag}};
+handle_info({'DOWN', MonitorRef, process, _Object, _Info},
+            State=#state{channel_mon=ChannelRef,
+                         connection=Connection,
+                         declare_fun=DeclareFun,
+                         declare_info=DeclareInfo,
+                         no_ack=NoAck})
+  when MonitorRef =:= ChannelRef ->
+    true = erlang:demonitor(ChannelRef),
+    Channel = lib_amqp:start_channel(Connection),
+    NewChannelRef = erlang:monitor(process, Channel),
+    {ok, QueueName} =
+        declare_subscribe(
+          Channel, DeclareFun, DeclareInfo, NoAck),
+
+    {noreply, State#state{queue=QueueName,
+                          channel=Channel,
+                          channel_mon=NewChannelRef}};
+handle_info({'DOWN', MonitorRef, process, _Object, _Info},
+            State=#state{channel_mon=ChannelRef,
+                         connection_mon=ConnectionRef,
+                         connect_fun=ConnectFun,
+                         connection_info=ConnectionInfo,
+                         declare_fun=DeclareFun,
+                         declare_info=DeclareInfo,
+                         no_ack=NoAck})
+  when MonitorRef =:= ConnectionRef ->
+    true = erlang:demonitor(ChannelRef),
+    true = erlang:demonitor(ConnectionRef),
+    {ok, NewConnection, NewChannel, QueueName} =
+        connect_declare_subscribe(
+          ConnectFun, DeclareFun, ConnectionInfo, DeclareInfo, NoAck),
+
+    NewConnectionRef = erlang:monitor(process, NewConnection),
+    NewChannelRef = erlang:monitor(process, NewChannel),
+
+    {noreply, State#state{queue=QueueName,
+                          connection=NewConnection,
+                          channel=NewChannel,
+                          channel_mon=NewChannelRef,
+                          connection_mon=NewConnectionRef}};
 handle_info(Info, State=#state{mod=Module, modstate=ModState}) ->
     io:format("Unknown info message: ~p~n", [Info]),
     case Module:handle_info(Info, ModState) of
@@ -225,16 +275,25 @@ connect_declare_subscribe(ConnectFun, DeclareFun,
             Reason;
         {ConnectionPid, ChannelPid} when is_pid(ConnectionPid),
                                          is_pid(ChannelPid) ->
-            case catch DeclareFun(ChannelPid, DeclareInfo) of
-                {'EXIT', {Reason, _Stack}} ->
-                    Reason;
-                {_Exchange, Queue} when ?is_queue(Queue) ->
-                    QueueName = bunny_util:get_name(Queue),
-                    lib_amqp:subscribe(ChannelPid,
-                                       QueueName,
-                                       self(), NoAck),
-                    {ok, ConnectionPid, ChannelPid, QueueName}
+            case declare_subscribe(ChannelPid, DeclareFun,
+                                   DeclareInfo, NoAck) of
+                {ok, QueueName} ->
+                    {ok, ConnectionPid, ChannelPid, QueueName};
+                Reason ->
+                    Reason
             end
+    end.
+
+declare_subscribe(ChannelPid, DeclareFun, DeclareInfo, NoAck) ->
+    case catch DeclareFun(ChannelPid, DeclareInfo) of
+        {'EXIT', {Reason, _Stack}} ->
+            Reason;
+        {_Exchange, Queue} when ?is_queue(Queue) ->
+            QueueName = bunny_util:get_name(Queue),
+            lib_amqp:subscribe(ChannelPid,
+                               QueueName,
+                               self(), NoAck),
+            {ok, QueueName}
     end.
 
 get_opt(Opt, Proplist, Default) ->
@@ -245,7 +304,6 @@ get_opt(Opt, Proplist, Default) ->
 %%
 %% Tests
 %%
-
 -include_lib("eunit/include/eunit.hrl").
 
 cds_setup() ->
@@ -345,8 +403,8 @@ cds_declare_error_test_() ->
 test_gb_setup_1(NoAck) ->
     {ok, _} = mock:mock(lib_amqp),
 
-    ConnectionPid = spawn_fake_proc(self()),
-    ChannelPid = spawn_fake_proc(self()),
+    ConnectionPid = spawn_fake_proc(),
+    ChannelPid = spawn_fake_proc(),
 
     mock:expects(lib_amqp, subscribe,
                  fun({Channel, <<"bunny.test">>, _Pid, NA})
@@ -383,18 +441,21 @@ test_gb_noack_false_setup() ->
     test_gb_setup_1(false).
 
 
-test_gb_stop({ConnectionPid, ChannelPid, TestPid}) ->
+test_gb_stop({_ConnectionPid, _ChannelPid, TestPid}) ->
+    ExpectedChannelPid = gen_bunny:get_channel(TestPid),
+    ExpectedConnectionPid = gen_bunny:get_connection(TestPid),
+
     mock:expects(lib_amqp, unsubscribe,
                  fun({Channel, <<"bunny.consumer">>})
-                    when Channel =:= ChannelPid ->
+                    when Channel =:= ExpectedChannelPid ->
                          true
                  end,
                  ok),
 
     mock:expects(lib_amqp, teardown,
                  fun({Connection, Channel})
-                    when Connection =:= ConnectionPid,
-                         Channel =:= ChannelPid ->
+                    when Connection =:= ExpectedConnectionPid,
+                         Channel =:= ExpectedChannelPid ->
                          true
                  end,
                  ok),
@@ -402,12 +463,6 @@ test_gb_stop({ConnectionPid, ChannelPid, TestPid}) ->
     timer:sleep(100), %% I hate this.
     mock:verify_and_stop(lib_amqp),
     ok.
-
-test_gb_stop_nostop({_ConnectionPid, _ChannelPid, _TestPid}) ->
-    timer:sleep(100), %% I hate this.
-    mock:verify_and_stop(lib_amqp),
-    ok.
-
 
 test_gb_start_link_test_() ->
     {setup, fun test_gb_setup/0, fun test_gb_stop/1,
@@ -545,6 +600,132 @@ test_gb_info_passthrough_test_() ->
                  end])
      end}.
 
+test_monitor_setup() ->
+    {ok, _} = mock:mock(lib_amqp),
+
+    ConnectionPid = spawn_fake_proc(),
+    NewConnectionPid = spawn_fake_proc(),
+
+    ChannelPid = spawn_fake_proc(),
+    NewChannelPid = spawn_fake_proc(),
+
+    mock:expects(lib_amqp, subscribe,
+              fun({_Channel, <<"bunny.test">>, _Pid, _NA}) ->
+                      true
+                 end,
+                 ok, 2),
+
+    ConnectFun = fun(direct) ->
+                         case get('_connect_fun_run_before') of
+                             undefined ->
+                                 put('_connect_fun_run_before', true),
+                                 {ConnectionPid, ChannelPid};
+                             true ->
+                                 {NewConnectionPid, NewChannelPid}
+                         end
+                 end,
+
+    DeclareFun = fun(_Channel, <<"bunny.test">>) ->
+                         {bunny_util:new_exchange(<<"bunny.test">>),
+                          bunny_util:new_queue(<<"bunny.test">>)}
+                 end,
+
+    {ok, TestPid} = test_gb:start_link([{connect_fun, ConnectFun},
+                                        {declare_fun, DeclareFun}]),
+
+    TestPid ! #'basic.consume_ok'{consumer_tag = <<"bunny.consumer">>},
+
+    {ConnectionPid, NewConnectionPid, ChannelPid, NewChannelPid, TestPid}.
+
+test_monitor_stop({_ConnectionPid, _NewConnectionPid,
+                   _ChannelPid, _NewChannelPid, TestPid}) ->
+    ExpectedChannelPid = gen_bunny:get_channel(TestPid),
+    ExpectedConnectionPid = gen_bunny:get_connection(TestPid),
+
+    mock:expects(lib_amqp, unsubscribe,
+                 fun({Channel, <<"bunny.consumer">>})
+                    when Channel =:= ExpectedChannelPid ->
+                         true
+                 end,
+                 ok),
+
+    mock:expects(lib_amqp, teardown,
+                 fun({Connection, Channel})
+                    when Connection =:= ExpectedConnectionPid,
+                         Channel =:= ExpectedChannelPid ->
+                         true
+                 end,
+                 ok),
+    gen_bunny:stop(TestPid),
+    timer:sleep(100), %% I hate this.
+    mock:verify_and_stop(lib_amqp),
+    ok.
+
+channel_monitor_test_() ->
+    {setup, fun test_monitor_setup/0, fun test_monitor_stop/1,
+     fun({ConnectionPid, _, ChannelPid, NewChannelPid, TestPid}) ->
+             ?_test(
+                [begin
+                     MonRef = erlang:monitor(process, ChannelPid),
+
+                     mock:expects(
+                       lib_amqp, start_channel,
+                       fun({Connection})
+                          when is_pid(Connection) andalso
+                               Connection =:= ConnectionPid ->
+                               true
+                       end,
+                       fun(_, _) ->
+                               NewChannelPid
+                       end),
+
+                     exit(ChannelPid, die),
+                     ?assertEqual(true, erlang:is_process_alive(TestPid)),
+                     ?assertEqual(false, erlang:is_process_alive(ChannelPid)),
+
+                     receive
+                         {'DOWN', MonRef, process, ChannelPid, die} ->
+                             ok
+                     end,
+
+                     ?assertMatch(NewChannelPid,
+                                  gen_bunny:get_channel(TestPid)),
+                     ?assert(ChannelPid =/= NewChannelPid),
+                     ?assertEqual(true, erlang:is_process_alive(NewChannelPid))
+                 end])
+     end}.
+
+
+connection_monitor_test_() ->
+    {setup, fun test_monitor_setup/0, fun test_monitor_stop/1,
+     fun({ConnectionPid, NewConnectionPid,
+          ChannelPid, NewChannelPid, TestPid}) ->
+             ?_test(
+                [begin
+                     MonRef = erlang:monitor(process, ConnectionPid),
+
+                     exit(ConnectionPid, die),
+                     ?assertEqual(true, erlang:is_process_alive(TestPid)),
+                     ?assertEqual(false,
+                                  erlang:is_process_alive(ConnectionPid)),
+
+                     receive
+                         {'DOWN', MonRef, process, ConnectionPid, die} ->
+                             ok
+                     end,
+
+                     ?assertMatch(NewConnectionPid,
+                                  gen_bunny:get_connection(TestPid)),
+                     ?assert(ConnectionPid =/= NewConnectionPid),
+                     ?assertEqual(true,
+                                  erlang:is_process_alive(NewConnectionPid)),
+
+                     ?assertMatch(NewChannelPid,
+                                  gen_bunny:get_channel(TestPid)),
+                     ?assert(ChannelPid =/= NewChannelPid),
+                     ?assertEqual(true, erlang:is_process_alive(NewChannelPid))
+                 end])
+     end}.
 
 %% These are mostly to placate cover.
 
@@ -562,30 +743,16 @@ behaviour_info_test() ->
 code_change_test() ->
     ?assertEqual({ok, #state{}}, gen_bunny:code_change(ign, #state{}, ign)).
 
-channel_link_test_() ->
-    {setup, fun test_gb_setup/0, fun test_gb_stop_nostop/1,
-     fun({_ConnectionPid, ChannelPid, TestPid}) ->
-             process_flag(trap_exit, true),
-             exit(ChannelPid, kill),
-             receive
-                 {'EXIT', TestPid, killed}  ->
-                     ok
-             end,
-             process_flag(trap_exit, false),
-             ?assertEqual(false, erlang:is_process_alive(TestPid))
-     end}.
 
-    
-fake_proc(Pid) ->
+%% Test Utils
+
+fake_proc() ->
     receive
         _ ->
             ok
     after 1000 ->
-            fake_proc(Pid)
+            fake_proc()
     end.
 
-spawn_fake_proc(Pid) ->
-    spawn(fun() -> fake_proc(Pid) end).
-    
-
-           
+spawn_fake_proc() ->
+    spawn(fun() -> fake_proc() end).
