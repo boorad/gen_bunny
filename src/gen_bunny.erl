@@ -44,7 +44,6 @@
          get_channel/1,
          get_consumer_tag/1,
          ack/1,
-         ack/2,
          stop/1]).
 
 -record(state, {declare_fun,
@@ -137,11 +136,14 @@ get_channel(Pid) when is_pid(Pid) ->
 get_consumer_tag(Pid) when is_pid(Pid) ->
     gen_server:call(Pid, get_consumer_tag).
 
-ack(Tag) ->
-    ack(self(), Tag).
-
-ack(Pid, Tag) when is_pid(Pid), is_integer(Tag) ->
-    gen_server:cast(Pid, {ack, Tag}).
+ack({Channel, Tag}) ->
+    case erlang:is_process_alive(Channel) of
+        false ->
+            {error, {no_channel, Channel}};
+        true ->
+            lib_amqp:ack(Channel, Tag),
+            ok
+    end.
 
 handle_call(get_connection, _From, State=#state{connection=Connection}) ->
     {reply, Connection, State};
@@ -165,13 +167,12 @@ handle_call(Request, From, State=#state{mod=Module, modstate=ModState}) ->
             {stop, Reason, Reply, State#state{modstate=NewModState}}
   end.
 
-handle_cast(stop, State=#state{channel=Channel, consumer_tag=CTag, connection=Connection}) ->
+handle_cast(stop, State=#state{channel=Channel,
+                               consumer_tag=CTag,
+                               connection=Connection}) ->
     ok = lib_amqp:unsubscribe(Channel, CTag),
     ok = lib_amqp:teardown(Connection, Channel),
     {stop, normal, State};
-handle_cast({ack, Tag}, State=#state{channel=Channel}) ->
-    lib_amqp:ack(Channel, Tag),
-    {noreply, State};
 handle_cast(Msg, State=#state{mod=Module, modstate=ModState}) ->
     case Module:handle_cast(Msg, ModState) of
         {noreply, NewModState} ->
@@ -532,23 +533,6 @@ test_gb_handle_message_noack_false_test_() ->
      end}.
 
 
-test_gb_ack_test_() ->
-    {setup, fun test_gb_noack_false_setup/0, fun test_gb_stop/1,
-     fun({_ConnectionPid, ChannelPid, TestPid}) ->
-             ?_test(
-                [begin
-                     mock:expects(lib_amqp, ack,
-                                  fun({Channel, Tag})
-                                     when Channel =:= ChannelPid,
-                                          Tag =:= 1 ->
-                                          true
-                                  end,
-                                  ok),
-                     ?assertEqual(ok, gen_bunny:ack(TestPid, 1))
-                 end])
-     end}.
-
-
 test_gb_self_ack_test_() ->
     {setup, fun test_gb_noack_false_setup/0, fun test_gb_stop/1,
      fun({_ConnectionPid, ChannelPid, TestPid}) ->
@@ -563,7 +547,8 @@ test_gb_self_ack_test_() ->
                                   ok),
                      %% Ack in a round about way so that we can test
                      %% gen_bunny:ack/1
-                     ?assertEqual(ok, test_gb:ack_stuff(TestPid, 1))
+                     ?assertEqual(ok, test_gb:ack_stuff(TestPid,
+                                                        {ChannelPid, 1}))
                  end])
      end}.
 
