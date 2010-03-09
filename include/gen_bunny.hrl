@@ -10,7 +10,8 @@
 -define(is_binding(X), element(1, X) =:= binding).
 -define(is_message(X), element(1, X) =:= content).
 -define(is_tagged_message(X),
-        (is_integer(element(1, X)) andalso
+        (is_pid(element(1, element(1, X))) andalso
+         is_integer(element(2, element(1, X))) andalso
          ?is_message(element(2, X)))).
 
 %%
@@ -28,4 +29,3 @@
 -type(durable_obj() :: exchange() | bunny_queue()).
 
 -endif. %% GEN_BUNNY_HRL_PREIFX
-

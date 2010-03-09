@@ -185,7 +185,8 @@ handle_cast(Msg, State=#state{mod=Module, modstate=ModState}) ->
 
 handle_info({Envelope=#'basic.deliver'{},
              Message0},
-            State=#state{no_ack=NoAck, mod=Module, modstate=ModState})
+            State=#state{no_ack=NoAck, mod=Module, modstate=ModState,
+                         channel=Channel})
   when ?is_message(Message0) ->
     Message1 = rabbit_binary_parser:ensure_content_decoded(Message0),
 
@@ -193,7 +194,8 @@ handle_info({Envelope=#'basic.deliver'{},
                   true ->
                       Message1;
                   false ->
-                      {Envelope#'basic.deliver'.delivery_tag, Message1}
+                      {{Channel, Envelope#'basic.deliver'.delivery_tag},
+                       Message1}
               end,
 
     case Module:handle_message(Message, ModState) of
@@ -514,14 +516,15 @@ test_gb_handle_message_decode_properties_test_() ->
 
 test_gb_handle_message_noack_false_test_() ->
     {setup, fun test_gb_noack_false_setup/0, fun test_gb_stop/1,
-     fun({_ConnectionPid, _ChannelPid, TestPid}) ->
+     fun({_ConnectionPid, ChannelPid, TestPid}) ->
              ?_test(
                 [begin
-                     ExpectedMessage = {1, {
-                       content, 60, amqp_util:basic_properties(),
-                       <<152,0,24,97,112,112,108,105,99,97,116,105,111,110,
-                        47,111,99,116,101,116,45,115,116,114,101,97,109,1,0>>,
-                       [<<"zomgasdfasdf">>]}},
+                     ExpectedMessage =
+                         {{ChannelPid, 1}, {
+                            content, 60, amqp_util:basic_properties(),
+                            <<152,0,24,97,112,112,108,105,99,97,116,105,111,110,
+                              47,111,99,116,101,116,45,115,116,114,101,97,109,1,0>>,
+                            [<<"zomgasdfasdf">>]}},
                      RawMessage = {
                        content, 60, none,
                        <<152,0,24,97,112,112,108,105,99,97,116,105,111,110,
