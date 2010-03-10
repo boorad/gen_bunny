@@ -112,8 +112,8 @@ handle_call({get, NoAck}, _From,
 
 handle_call(stop, _From,
             State = #state{channel=Channel, connection=Connection}) ->
-    lib_amqp:close_channel(Channel),
-    lib_amqp:close_connection(Connection),
+    amqp_channel:close(Channel),
+    amqp_connection:close(Connection),
     {stop, normal, ok, State}.
 
 handle_cast({publish, Key, Message, Opts},
@@ -162,11 +162,12 @@ internal_publish(Fun, Channel, Exchange, Key, Message, Opts)
 
 
 internal_get(Channel, Queue, NoAck) ->
-    lib_amqp:get(Channel, bunny_util:get_name(Queue), NoAck).
+    amqp_channel:call(Channel, #'basic.get'{queue=bunny_util:get_name(Queue),
+                                            no_ack=NoAck}).
 
 
 internal_ack(Channel, DeliveryTag) ->
-    lib_amqp:ack(Channel, DeliveryTag).
+    amqp_channel:cast(Channel, #'basic.ack'{delivery_tag=DeliveryTag}).
 
 %%
 %% Tests
@@ -175,14 +176,16 @@ internal_ack(Channel, DeliveryTag) ->
 -include_lib("eunit/include/eunit.hrl").
 
 bunnyc_setup() ->
-    {ok, _} = mock:mock(lib_amqp),
+    {ok, _} = mock:mock(amqp_channel),
+    {ok, _} = mock:mock(amqp_connection),
     ok.
 
 
 bunnyc_stop(_) ->
     bunnyc:stop(bunnyc_test),
 
-    mock:verify_and_stop(lib_amqp),
+    mock:verify_and_stop(amqp_channel),
+    mock:verify_and_stop(amqp_connection),
     ok.
 
 
@@ -200,13 +203,13 @@ connect_and_declare_expects(TestName) ->
 
 
 stop_expects() ->
-    mock:expects(lib_amqp, close_channel,
+    mock:expects(amqp_channel, close,
                  fun({dummy_channel}) ->
                          true
                  end,
                  ok),
 
-    mock:expects(lib_amqp, close_connection,
+    mock:expects(amqp_connection, close,
                  fun({dummy_conn}) ->
                          true
                  end,
@@ -220,15 +223,17 @@ bunnyc_test_() ->
         [begin
              DummyFuns = connect_and_declare_expects(<<"bunnyc.test">>),
              stop_expects(),
-             {ok, _} = bunnyc:start_link(bunnyc_test, direct,
-                                         <<"bunnyc.test">>, DummyFuns)
+             {ok, Pid} = bunnyc:start_link(bunnyc_test, direct,
+                                           <<"bunnyc.test">>, DummyFuns),
+             ?assertEqual(is_pid(Pid), true),
+             ?assertEqual(is_process_alive(Pid), true)
          end])}.
 
 
 
 normal_setup() ->
-    {ok, _} = mock:mock(lib_amqp),
     {ok, _} = mock:mock(amqp_channel),
+    {ok, _} = mock:mock(amqp_connection),
     {ok, _} = bunnyc:start_link(
                 bunnyc_test, direct, <<"bunnyc.test">>,
                 connect_and_declare_expects(<<"bunnyc.test">>)),
@@ -239,7 +244,7 @@ normal_setup() ->
 normal_stop(_) ->
     bunnyc:stop(bunnyc_test),
     mock:verify_and_stop(amqp_channel),
-    mock:verify_and_stop(lib_amqp),
+    mock:verify_and_stop(amqp_connection),
     ok.
 
 
@@ -383,8 +388,11 @@ get_test_() ->
     {setup, fun normal_setup/0, fun normal_stop/1,
      ?_test(
         [begin
-             mock:expects(lib_amqp, get,
-                          fun({dummy_channel, <<"bunnyc.test">>, false}) ->
+             mock:expects(amqp_channel, call,
+                          fun({dummy_channel,
+                               #'basic.get'{
+                                 queue= <<"bunnyc.test">>,
+                                 no_ack=false}}) ->
                                   true
                           end,
                           {<<"sometag">>,
@@ -399,8 +407,10 @@ get_noack_test_() ->
     {setup, fun normal_setup/0, fun normal_stop/1,
      ?_test(
         [begin
-             mock:expects(lib_amqp, get,
-                          fun({dummy_channel, <<"bunnyc.test">>, true}) ->
+             mock:expects(amqp_channel, call,
+                          fun({dummy_channel,
+                               #'basic.get'{queue= <<"bunnyc.test">>,
+                                            no_ack=true}}) ->
                                   true
                           end,
                           bunny_util:new_message(<<"somecontent">>)),
@@ -413,8 +423,9 @@ ack_test_() ->
     {setup, fun normal_setup/0, fun normal_stop/1,
      ?_test(
         [begin
-             mock:expects(lib_amqp, ack,
-                          fun({dummy_channel, <<"sometag">>}) ->
+             mock:expects(amqp_channel, cast,
+                          fun({dummy_channel, #'basic.ack'{
+                                 delivery_tag= <<"sometag">>}}) ->
                                   true
                           end,
                           ok),
