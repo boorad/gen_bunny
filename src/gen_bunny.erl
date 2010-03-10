@@ -141,7 +141,7 @@ ack({Channel, Tag}) ->
         false ->
             {error, {no_channel, Channel}};
         true ->
-            lib_amqp:ack(Channel, Tag),
+            amqp_channel:call(Channel, #'basic.ack'{delivery_tag=Tag}),
             ok
     end.
 
@@ -212,7 +212,7 @@ handle_info({'DOWN', MonitorRef, process, _Object, _Info},
                          no_ack=NoAck})
   when MonitorRef =:= ChannelRef ->
     true = erlang:demonitor(ChannelRef),
-    Channel = lib_amqp:start_channel(Connection),
+    Channel = amqp_connection:open_channel(Connection),
     NewChannelRef = erlang:monitor(process, Channel),
     {ok, QueueName} =
         declare_subscribe(
@@ -259,8 +259,9 @@ terminate(Reason, #state{channel=Channel, consumer_tag=CTag, connection=Connecti
                          mod=Mod, modstate=ModState}) ->
     io:format("gen_bunny terminating with reason ~p~n", [Reason]),
     Mod:terminate(Reason, ModState),
-    ok = lib_amqp:unsubscribe(Channel, CTag),
-    ok = lib_amqp:teardown(Connection, Channel),
+    ok = amqp_channel:call(Channel, #'basic.cancel'{consumer_tag=CTag}),
+    ok = amqp_channel:close(Channel),
+    ok = amqp_connection:close(Connection),
     ok.
 
 code_change(_OldVersion, State, _Extra) ->
@@ -291,9 +292,10 @@ declare_subscribe(ChannelPid, DeclareFun, DeclareInfo, NoAck) ->
             Reason;
         {_Exchange, Queue} when ?is_queue(Queue) ->
             QueueName = bunny_util:get_name(Queue),
-            lib_amqp:subscribe(ChannelPid,
-                               QueueName,
-                               self(), NoAck),
+            amqp_channel:subscribe(ChannelPid,
+                                   #'basic.consume'{queue=QueueName,
+                                                    no_ack=NoAck},
+                                   self()),
             {ok, QueueName}
     end.
 
@@ -308,17 +310,19 @@ get_opt(Opt, Proplist, Default) ->
 -include_lib("eunit/include/eunit.hrl").
 
 cds_setup() ->
-    {ok, _} = mock:mock(lib_amqp),
+    {ok, _} = mock:mock(amqp_channel),
     ok.
 
 cds_stop(_) ->
-    mock:verify_and_stop(lib_amqp),
+    mock:verify_and_stop(amqp_channel),
     ok.
 
 
 cds_expects(_DummyConn, DummyChannel, NoAck) ->
-    mock:expects(lib_amqp, subscribe,
-                 fun({Chan, <<"cds.test">>, _Pid, NA})
+    mock:expects(amqp_channel, subscribe,
+                 fun({Chan,
+                      #'basic.consume'{queue= <<"cds.test">>, no_ack=NA},
+                      _Pid})
                     when Chan =:= DummyChannel,
                          NA =:= NoAck ->
                          true
@@ -402,13 +406,17 @@ cds_declare_error_test_() ->
 
 
 test_gb_setup_1(NoAck) ->
-    {ok, _} = mock:mock(lib_amqp),
+    {ok, _} = mock:mock(amqp_channel),
+    {ok, _} = mock:mock(amqp_connection),
 
     ConnectionPid = spawn_fake_proc(),
     ChannelPid = spawn_fake_proc(),
 
-    mock:expects(lib_amqp, subscribe,
-                 fun({Channel, <<"bunny.test">>, _Pid, NA})
+    mock:expects(amqp_channel, subscribe,
+                 fun({Channel,
+                      #'basic.consume'{queue= <<"bunny.test">>,
+                                       no_ack=NA},
+                      _Pid})
                     when Channel =:= ChannelPid,
                          NA =:= NoAck ->
                          true
@@ -446,23 +454,32 @@ test_gb_stop({_ConnectionPid, _ChannelPid, TestPid}) ->
     ExpectedChannelPid = gen_bunny:get_channel(TestPid),
     ExpectedConnectionPid = gen_bunny:get_connection(TestPid),
 
-    mock:expects(lib_amqp, unsubscribe,
-                 fun({Channel, <<"bunny.consumer">>})
+    mock:expects(amqp_channel, call,
+                 fun({Channel, #'basic.cancel'{
+                        consumer_tag= <<"bunny.consumer">>}})
                     when Channel =:= ExpectedChannelPid ->
                          true
                  end,
                  ok),
 
-    mock:expects(lib_amqp, teardown,
-                 fun({Connection, Channel})
-                    when Connection =:= ExpectedConnectionPid,
-                         Channel =:= ExpectedChannelPid ->
+    mock:expects(amqp_connection, close,
+                 fun({Connection})
+                    when Connection =:= ExpectedConnectionPid ->
                          true
                  end,
                  ok),
+
+    mock:expects(amqp_channel, close,
+                 fun({Channel})
+                    when Channel =:= ExpectedChannelPid ->
+                         true
+                 end,
+                 ok),
+
     gen_bunny:stop(TestPid),
     timer:sleep(100), %% I hate this.
-    mock:verify_and_stop(lib_amqp),
+    mock:verify_and_stop(amqp_channel),
+    mock:verify_and_stop(amqp_connection),
     ok.
 
 test_gb_start_link_test_() ->
@@ -497,7 +514,9 @@ test_gb_handle_message_decode_properties_test_() ->
              ?_test(
                 [begin
                      ExpectedMessage = {
-                       content, 60, amqp_util:basic_properties(),
+                       content, 60, #'P_basic'{content_type= <<"application/octet-stream">>,
+                                               delivery_mode=1,
+                                               priority=0},
                        <<152,0,24,97,112,112,108,105,99,97,116,105,111,110,
                         47,111,99,116,101,116,45,115,116,114,101,97,109,1,0>>,
                        [<<"zomgasdfasdf">>]},
@@ -519,7 +538,9 @@ test_gb_handle_message_noack_false_test_() ->
                 [begin
                      ExpectedMessage =
                          {{ChannelPid, 1}, {
-                            content, 60, amqp_util:basic_properties(),
+                            content, 60, #'P_basic'{content_type= <<"application/octet-stream">>,
+                                                    delivery_mode=1,
+                                                    priority=0},
                             <<152,0,24,97,112,112,108,105,99,97,116,105,111,110,
                               47,111,99,116,101,116,45,115,116,114,101,97,109,1,0>>,
                             [<<"zomgasdfasdf">>]}},
@@ -539,8 +560,8 @@ test_gb_self_ack_test_() ->
      fun({_ConnectionPid, ChannelPid, TestPid}) ->
              ?_test(
                 [begin
-                     mock:expects(lib_amqp, ack,
-                                  fun({Channel, Tag})
+                     mock:expects(amqp_channel, call,
+                                  fun({Channel, #'basic.ack'{delivery_tag=Tag}})
                                      when Channel =:= ChannelPid,
                                           Tag =:= 1 ->
                                           true
@@ -587,7 +608,8 @@ test_gb_info_passthrough_test_() ->
      end}.
 
 test_monitor_setup() ->
-    {ok, _} = mock:mock(lib_amqp),
+    {ok, _} = mock:mock(amqp_channel),
+    {ok, _} = mock:mock(amqp_connection),
 
     ConnectionPid = spawn_fake_proc(),
     NewConnectionPid = spawn_fake_proc(),
@@ -595,8 +617,10 @@ test_monitor_setup() ->
     ChannelPid = spawn_fake_proc(),
     NewChannelPid = spawn_fake_proc(),
 
-    mock:expects(lib_amqp, subscribe,
-              fun({_Channel, <<"bunny.test">>, _Pid, _NA}) ->
+    mock:expects(amqp_channel, subscribe,
+              fun({_Channel,
+                   #'basic.consume'{queue= <<"bunny.test">>},
+                   _Pid}) ->
                       true
                  end,
                  ok, 2),
@@ -628,23 +652,32 @@ test_monitor_stop({_ConnectionPid, _NewConnectionPid,
     ExpectedChannelPid = gen_bunny:get_channel(TestPid),
     ExpectedConnectionPid = gen_bunny:get_connection(TestPid),
 
-    mock:expects(lib_amqp, unsubscribe,
-                 fun({Channel, <<"bunny.consumer">>})
+    mock:expects(amqp_channel, call,
+                 fun({Channel, #'basic.cancel'{
+                        consumer_tag= <<"bunny.consumer">>}})
                     when Channel =:= ExpectedChannelPid ->
                          true
                  end,
                  ok),
 
-    mock:expects(lib_amqp, teardown,
-                 fun({Connection, Channel})
-                    when Connection =:= ExpectedConnectionPid,
-                         Channel =:= ExpectedChannelPid ->
+    mock:expects(amqp_connection, close,
+                 fun({Connection})
+                    when Connection =:= ExpectedConnectionPid ->
                          true
                  end,
                  ok),
+
+    mock:expects(amqp_channel, close,
+                 fun({Channel})
+                    when Channel =:= ExpectedChannelPid ->
+                         true
+                 end,
+                 ok),
+
     gen_bunny:stop(TestPid),
     timer:sleep(100), %% I hate this.
-    mock:verify_and_stop(lib_amqp),
+    mock:verify_and_stop(amqp_channel),
+    mock:verify_and_stop(amqp_connection),
     ok.
 
 channel_monitor_test_() ->
@@ -655,7 +688,7 @@ channel_monitor_test_() ->
                      MonRef = erlang:monitor(process, ChannelPid),
 
                      mock:expects(
-                       lib_amqp, start_channel,
+                       amqp_connection, open_channel,
                        fun({Connection})
                           when is_pid(Connection) andalso
                                Connection =:= ConnectionPid ->
@@ -714,14 +747,20 @@ connection_monitor_test_() ->
      end}.
 
 test_crash_setup() ->
-    {ok, _} = mock:mock(lib_amqp),
+    {ok, _} = mock:mock(amqp_channel),
+    {ok, _} = mock:mock(amqp_connection),
+
+    {ok, _} = terrors:start(crash_test),
+    error_logger:tty(false),
 
     ConnectionPid = spawn_fake_proc(),
 
     ChannelPid = spawn_fake_proc(),
 
-    mock:expects(lib_amqp, subscribe,
-              fun({_Channel, <<"bunny.test">>, _Pid, _NA}) ->
+    mock:expects(amqp_channel, subscribe,
+              fun({_Channel,
+                   #'basic.consume'{queue= <<"bunny.test">>},
+                   _Pid}) ->
                       true
                  end,
                  ok, 1),
@@ -740,17 +779,24 @@ test_crash_setup() ->
 
     TestPid ! #'basic.consume_ok'{consumer_tag = <<"bunny.consumer">>},
 
-    mock:expects(lib_amqp, unsubscribe,
-                 fun({Channel, <<"bunny.consumer">>})
+    mock:expects(amqp_channel, call,
+                 fun({Channel, #'basic.cancel'{
+                        consumer_tag= <<"bunny.consumer">>}})
                     when Channel =:= ChannelPid ->
                          true
                  end,
                  ok),
 
-    mock:expects(lib_amqp, teardown,
-                 fun({Connection, Channel})
-                    when Connection =:= ConnectionPid,
-                         Channel =:= ChannelPid ->
+    mock:expects(amqp_connection, close,
+                 fun({Connection})
+                    when Connection =:= ConnectionPid ->
+                         true
+                 end,
+                 ok),
+
+    mock:expects(amqp_channel, close,
+                 fun({Channel})
+                    when Channel =:= ChannelPid ->
                          true
                  end,
                  ok),
@@ -759,7 +805,11 @@ test_crash_setup() ->
     TestPid.
 
 test_crash_stop(_TestPid) ->
-    mock:verify_and_stop(lib_amqp),
+    error_logger:tty(true),
+    _ = terrors:wait_for_errors(crash_test, 1, 10000),
+    ok = terrors:stop(crash_test),
+    mock:verify_and_stop(amqp_channel),
+    mock:verify_and_stop(amqp_connection),
     ok.
 
 terminate_on_crash_test_() ->
