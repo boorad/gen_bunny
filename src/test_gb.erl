@@ -72,6 +72,8 @@ handle_call(get_casts, _From, State=#state{casts=Casts}) ->
     {reply, Casts, State};
 handle_call(get_infos, _From, State=#state{infos=Infos}) ->
     {reply, Infos, State};
+handle_call(crash, _From, State=#state{}) ->
+    ok = crashed;
 handle_call(Msg, _From, State=#state{calls=Calls}) ->
     {reply, ok, State#state{calls=[Msg|Calls]}}.
 
