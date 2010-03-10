@@ -167,11 +167,7 @@ handle_call(Request, From, State=#state{mod=Module, modstate=ModState}) ->
             {stop, Reason, Reply, State#state{modstate=NewModState}}
   end.
 
-handle_cast(stop, State=#state{channel=Channel,
-                               consumer_tag=CTag,
-                               connection=Connection}) ->
-    ok = lib_amqp:unsubscribe(Channel, CTag),
-    ok = lib_amqp:teardown(Connection, Channel),
+handle_cast(stop, State) ->
     {stop, normal, State};
 handle_cast(Msg, State=#state{mod=Module, modstate=ModState}) ->
     case Module:handle_cast(Msg, ModState) of
@@ -259,10 +255,12 @@ handle_info(Info, State=#state{mod=Module, modstate=ModState}) ->
             {stop, Reason, State#state{modstate=NewModState}}
     end.
 
-
-terminate(Reason, #state{mod=Mod, modstate=ModState}) ->
+terminate(Reason, #state{channel=Channel, consumer_tag=CTag, connection=Connection,
+                         mod=Mod, modstate=ModState}) ->
     io:format("gen_bunny terminating with reason ~p~n", [Reason]),
     Mod:terminate(Reason, ModState),
+    ok = lib_amqp:unsubscribe(Channel, CTag),
+    ok = lib_amqp:teardown(Connection, Channel),
     ok.
 
 code_change(_OldVersion, State, _Extra) ->
@@ -712,6 +710,67 @@ connection_monitor_test_() ->
                                   gen_bunny:get_channel(TestPid)),
                      ?assert(ChannelPid =/= NewChannelPid),
                      ?assertEqual(true, erlang:is_process_alive(NewChannelPid))
+                 end])
+     end}.
+
+test_crash_setup() ->
+    {ok, _} = mock:mock(lib_amqp),
+
+    ConnectionPid = spawn_fake_proc(),
+
+    ChannelPid = spawn_fake_proc(),
+
+    mock:expects(lib_amqp, subscribe,
+              fun({_Channel, <<"bunny.test">>, _Pid, _NA}) ->
+                      true
+                 end,
+                 ok, 1),
+
+    ConnectFun = fun(direct) ->
+                         {ConnectionPid, ChannelPid}
+                 end,
+
+    DeclareFun = fun(_Channel, <<"bunny.test">>) ->
+                         {bunny_util:new_exchange(<<"bunny.test">>),
+                          bunny_util:new_queue(<<"bunny.test">>)}
+                 end,
+
+    {ok, TestPid} = test_gb:start_link([{connect_fun, ConnectFun},
+                                        {declare_fun, DeclareFun}]),
+
+    TestPid ! #'basic.consume_ok'{consumer_tag = <<"bunny.consumer">>},
+
+    mock:expects(lib_amqp, unsubscribe,
+                 fun({Channel, <<"bunny.consumer">>})
+                    when Channel =:= ChannelPid ->
+                         true
+                 end,
+                 ok),
+
+    mock:expects(lib_amqp, teardown,
+                 fun({Connection, Channel})
+                    when Connection =:= ConnectionPid,
+                         Channel =:= ChannelPid ->
+                         true
+                 end,
+                 ok),
+
+    unlink(TestPid),
+    TestPid.
+
+test_crash_stop(_TestPid) ->
+    mock:verify_and_stop(lib_amqp),
+    ok.
+
+terminate_on_crash_test_() ->
+    {setup, fun test_crash_setup/0, fun test_crash_stop/1,
+     fun(TestPid) ->
+             ?_test(
+                [begin
+                     process_flag(trap_exit, true),
+                     link(TestPid),
+                     ?assertExit({{{badmatch, crashed}, _}, _},
+                                 gen_bunny:call(TestPid, crash))
                  end])
      end}.
 
