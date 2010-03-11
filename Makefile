@@ -3,7 +3,7 @@ EBIN_DIRS    := deps/effigy/ebin deps/rabbitmq-erlang-client/dist/*/ebin
 APP          := gen_bunny
 REBAR	     := ./rebar
 
-all: rabbitmq-server rabbitmq-erlang-client erl
+all: deps rabbitmq-server rabbitmq-erlang-client erl
 
 erl:
 	@$(REBAR) compile
@@ -38,3 +38,6 @@ distclean:
 
 dialyzer: erl
 	@dialyzer -Wno_match -Wno_return -c ebin/ | tee test/dialyzer.log
+
+deps:
+	mkdir -p deps
