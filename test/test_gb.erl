@@ -32,7 +32,7 @@
 
 -export([ack_stuff/2, get_messages/1, get_calls/1, get_casts/1, get_infos/1]).
 
--include_lib("gen_bunny.hrl").
+-include("gen_bunny.hrl").
 
 -record(state, {messages=[], calls=[], infos=[], casts=[]}).
 
@@ -41,8 +41,6 @@ start_link(Opts) ->
 
 init([]) ->
     {ok, #state{}}.
-
--include_lib("eunit/include/eunit.hrl").
 
 ack_stuff(Pid, Tag) ->
     gen_bunny:cast(Pid, {ack_stuff, Tag}).

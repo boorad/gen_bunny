@@ -1,7 +1,7 @@
 -ifndef(GEN_BUNNY_HRL_PREFIX).
 -define(GEN_BUNNY_HRL_PREFIX, true).
 
--include_lib("amqp_client.hrl").
+-include_lib("amqp_client/include/amqp_client.hrl").
 
 -define(is_queue(X), element(1, X) =:= 'queue.declare').
 -define(is_exchange(X), element(1, X) =:= 'exchange.declare').
@@ -25,5 +25,22 @@
 -type(bunny_queue() :: #'queue.declare'{}).
 -type(binding() :: #binding{}).
 -type(durable_obj() :: exchange() | bunny_queue()).
+
+%% Process state
+-record(gen_bunny_state, {declare_fun,
+                          connect_fun,
+                          mod,
+                          modstate,
+                          channel,
+                          connection,
+                          queue,
+                          connection_info,
+                          declare_info,
+                          consumer_tag,
+                          no_ack,
+                          channel_mon,
+                          connection_mon}).
+
+-record(bunnyc_state, {connection, channel, exchange, queue, key}).
 
 -endif. %% GEN_BUNNY_HRL_PREIFX
