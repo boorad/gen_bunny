@@ -6,9 +6,7 @@
   {modules,      [
                   bunnyc,
                   bunny_util,
-                  gen_bunny,
-                  example_gb,
-                  test_gb
+                  gen_bunny
                  ]},
   {registered,   []},
   {mod,          {gen_bunny_app, []}},
