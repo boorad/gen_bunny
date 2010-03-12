@@ -85,8 +85,8 @@ publish_test_() ->
                fun({dummy_channel, #'basic.publish'{
                       exchange = <<"bunnyc.test">>,
                       routing_key = <<"bunnyc.test">>},
-                    Message}) when ?is_message(Message) ->
-                       bunny_util:get_payload(Message) =:= <<"HELLO GOODBYE">>
+                    #amqp_msg{payload=Payload}}) ->
+                       Payload =:= <<"HELLO GOODBYE">>
                end,
                ok),
 
@@ -106,8 +106,8 @@ async_publish_test_() ->
                fun({dummy_channel, #'basic.publish'{
                       exchange = <<"bunnyc.test">>,
                       routing_key = <<"bunnyc.test">>},
-                    Message}) when ?is_message(Message) ->
-                       bunny_util:get_payload(Message) =:= <<"HELLO GOODBYE">>
+                    #amqp_msg{payload=Payload}}) ->
+                       Payload =:= <<"HELLO GOODBYE">>
                end,
                ok),
 
@@ -125,15 +125,18 @@ publish_message_test_() ->
              ExpectedMessage = bunny_util:set_delivery_mode(
                                  bunny_util:new_message(<<"HELLO">>),
                                  2),
+             ExpectedPayload = bunny_util:get_payload(ExpectedMessage),
 
              mock:expects(
                amqp_channel, call,
                fun({dummy_channel, #'basic.publish'{exchange=Exchange,
                                                     routing_key=Key},
-                    Message}) when ?is_message(Message) ->
+                    #amqp_msg{props=Props, payload=Payload}}) ->
                        Exchange =:= <<"bunnyc.test">>
                            andalso Key =:= <<"bunnyc.test">>
-                           andalso ExpectedMessage =:= Message
+                           andalso (
+                             ExpectedMessage#content.properties =:= Props)
+                           andalso (ExpectedPayload =:= Payload)
                end,
                ok),
              ?assertEqual(ok, bunnyc:publish(
@@ -150,15 +153,19 @@ async_publish_message_test_() ->
              ExpectedMessage = bunny_util:set_delivery_mode(
                                  bunny_util:new_message(<<"HELLO">>),
                                  2),
+             ExpectedPayload = bunny_util:get_payload(ExpectedMessage),
 
              mock:expects(
                amqp_channel, cast,
                fun({dummy_channel, #'basic.publish'{exchange=Exchange,
                                                     routing_key=Key},
-                    Message}) when ?is_message(Message) ->
+                    #amqp_msg{props=Props, payload=Payload}}) ->
                        Exchange =:= <<"bunnyc.test">>
                            andalso Key =:= <<"bunnyc.test">>
-                           andalso ExpectedMessage =:= Message
+                           andalso (
+                             ExpectedMessage#content.properties =:= Props)
+                           andalso (
+                             ExpectedPayload =:= Payload)
                end,
                ok),
              ?assertEqual(ok, bunnyc:async_publish(
@@ -178,8 +185,8 @@ publish_mandatory_test_() ->
                       exchange = <<"bunnyc.test">>,
                       routing_key = <<"bunnyc.test">>,
                       mandatory = true},
-                    Message}) when ?is_message(Message) ->
-                       bunny_util:get_payload(Message) =:= <<"HELLO GOODBYE">>
+                    #amqp_msg{payload=Payload}}) ->
+                       Payload =:= <<"HELLO GOODBYE">>
                end,
                ok),
 
@@ -200,8 +207,8 @@ async_publish_mandatory_test_() ->
                       exchange = <<"bunnyc.test">>,
                       routing_key = <<"bunnyc.test">>,
                       mandatory = true},
-                    Message}) when ?is_message(Message) ->
-                       bunny_util:get_payload(Message) =:= <<"HELLO GOODBYE">>
+                    #amqp_msg{payload=Payload}}) ->
+                       Payload =:= <<"HELLO GOODBYE">>
                end,
                ok),
 
