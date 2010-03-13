@@ -52,6 +52,7 @@
          set_durable/2]).
 
 -export([connect/0, connect/1, declare/2]).
+-export([declare_exchange/2, declare_queue/2, bind_queue/4]).
 
 %% @type message()=#content{}
 %% @type payload()=#binary{}
@@ -119,12 +120,16 @@ set_content_type(Message = #content{properties=Props}, Type)
 %% @doc Create a new exchange definition.  Exchange type defaults to "direct".
 %% @equiv new_exchange(Name, <<"direct">>)
 -spec(new_exchange(servobj_name()) -> exchange()).
+new_exchange(Exchange) when ?is_exchange(Exchange) ->
+    Exchange;
 new_exchange(Name) ->
     new_exchange(Name, <<"direct">>).
 
 %% @spec new_exchange(Name::servobj_name, Type::exchange_type()) -> exchange()
 %% @doc Create a new exchange definition of type Type.
 -spec(new_exchange(servobj_name(), exchange_type()) -> exchange()).
+new_exchange(Exchange, Type) when ?is_exchange(Exchange), is_binary(Type) ->
+    Exchange#'exchange.declare'{type=Type};
 new_exchange(Name, Type) when is_binary(Name), is_binary(Type) ->
     #'exchange.declare'{exchange=Name, type=Type}.
 
@@ -151,6 +156,8 @@ set_type(Exchange, Type) when ?is_exchange(Exchange), is_binary(Type) ->
 %% @spec new_queue(Name::servobj_name()) -> bunny_queue()
 %% @doc  Create a new Queue named Name
 -spec(new_queue(servobj_name()) -> bunny_queue()).
+new_queue(Queue) when ?is_queue(Queue) ->
+    Queue;
 new_queue(Name) when is_binary(Name) ->
     #'queue.declare'{queue=Name}.
 
@@ -216,25 +223,42 @@ connect({network, Host, Port, {User, Pass}, VHost}) ->
                                    password=Pass,
                                    virtual_host=VHost}}).
 
-declare(Channel, NameForEverything) when is_binary(NameForEverything) ->
-    declare(Channel, {NameForEverything, NameForEverything, NameForEverything});
-declare(Channel, {ExchangeName, QueueName, RoutingKey})
-  when is_binary(ExchangeName), is_binary(QueueName), is_binary(RoutingKey) ->
-    declare(Channel, {new_exchange(ExchangeName),
-                      new_queue(QueueName),
-                      RoutingKey});
-declare(Channel, {Exchange, Queue, RoutingKey})
-  when ?is_exchange(Exchange), ?is_queue(Queue), is_binary(RoutingKey) ->
-    #'exchange.declare_ok'{} = amqp_channel:call(Channel, Exchange),
-    #'queue.declare_ok'{} = amqp_channel:call(Channel, Queue),
 
-    ExchangeName = get_name(Exchange),
-    QueueName = get_name(Queue),
+declare(Channel, NameForEverything) when is_binary(NameForEverything) ->
+    declare(Channel,
+            {NameForEverything, NameForEverything, NameForEverything});
+declare(Channel, {Exchange, Queue, RoutingKey})
+  when is_binary(RoutingKey) ->
+    {ok, Exchange1} = declare_exchange(Channel, Exchange),
+    {ok, Queue1} = declare_queue(Channel, Queue),
+    ok = bind_queue(Channel, Exchange, Queue, RoutingKey),
+
+    {ok, {Exchange1, Queue1}}.
+
+
+declare_exchange(Channel, Exchange) ->
+    Exchange1 = new_exchange(Exchange),
+    #'exchange.declare_ok'{} = amqp_channel:call(
+                                 Channel,
+                                 Exchange1),
+    {ok, Exchange1}.
+
+
+declare_queue(Channel, Queue) ->
+    Queue1 = new_queue(Queue),
+    #'queue.declare_ok'{} = amqp_channel:call(
+                                 Channel,
+                                 Queue1),
+    {ok, Queue1}.
+
+
+bind_queue(Channel, Exchange, Queue, RoutingKey) ->
+    ExchangeName = get_name(new_exchange(Exchange)),
+    QueueName = get_name(new_queue(Queue)),
 
     Binding = #'queue.bind'{queue=QueueName,
                             exchange=ExchangeName,
                             routing_key=RoutingKey},
 
     #'queue.bind_ok'{} = amqp_channel:call(Channel, Binding),
-
-    {ok, {Exchange, Queue}}.
+    ok.

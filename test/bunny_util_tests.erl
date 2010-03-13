@@ -57,27 +57,50 @@ get_content_type_test() ->
 new_exchange_test() ->
     Exchange = bunny_util:new_exchange(<<"Hello">>),
     ?assert(?is_exchange(Exchange)),
-    ?assertMatch(#'exchange.declare'{exchange = <<"Hello">>,
+    ?assertEqual(#'exchange.declare'{exchange = <<"Hello">>,
                                      type = <<"direct">>}, Exchange).
+
+
+new_exchange_takes_exchange_test() ->
+    Exchange = #'exchange.declare'{exchange= <<"Test">>},
+    ?assertEqual(Exchange, bunny_util:new_exchange(Exchange)).
+
+
+new_exchange_takes_exchange_preserves_data_test() ->
+    Exchange = #'exchange.declare'{exchange= <<"Test">>, durable=true,
+                                   type= <<"topic">>},
+    ?assertEqual(Exchange, bunny_util:new_exchange(Exchange)).
 
 
 new_exchange_with_type_test() ->
     Exchange = bunny_util:new_exchange(<<"Hello">>, <<"topic">>),
     ?assert(?is_exchange(Exchange)),
-    ?assertMatch(#'exchange.declare'{exchange = <<"Hello">>,
+    ?assertEqual(#'exchange.declare'{exchange = <<"Hello">>,
                                      type = <<"topic">>}, Exchange).
+
+
+new_exchange_with_type_takes_exchange_test() ->
+    Exchange = #'exchange.declare'{exchange= <<"Test">>, type= <<"topic">>},
+    ?assertEqual(Exchange, bunny_util:new_exchange(Exchange, <<"topic">>)).
+
+
+new_exchange_with_type_takes_exchange_changes_type_test() ->
+    Exchange = #'exchange.declare'{exchange= <<"Test">>, type= <<"topic">>},
+    ?assertEqual(Exchange#'exchange.declare'{type= <<"direct">>},
+                 bunny_util:new_exchange(Exchange, <<"direct">>)).
 
 
 get_type_test() ->
     ?assertEqual(<<"direct">>,
-                 bunny_util:get_type(#'exchange.declare'{type = <<"direct">>})).
+                 bunny_util:get_type(
+                   #'exchange.declare'{type = <<"direct">>})).
 
 
 set_type_test() ->
     Exchange =bunny_util:new_exchange(<<"Hello">>),
     NewExchange = bunny_util:set_type(Exchange, <<"topic">>),
 
-    ?assertMatch(#'exchange.declare'{exchange = <<"Hello">>,
+    ?assertEqual(#'exchange.declare'{exchange = <<"Hello">>,
                                      type = <<"topic">>}, NewExchange).
 
 
@@ -105,7 +128,12 @@ set_durable_exchange_test() ->
 new_queue_test() ->
     Queue = bunny_util:new_queue(<<"Hello">>),
     ?assert(?is_queue(Queue)),
-    ?assertMatch(#'queue.declare'{queue = <<"Hello">>}, Queue).
+    ?assertEqual(#'queue.declare'{queue = <<"Hello">>}, Queue).
+
+
+new_queue_takes_queue_test() ->
+    Queue = #'queue.declare'{queue= <<"Test">>},
+    ?assertEqual(Queue, bunny_util:new_queue(Queue)).
 
 
 is_durable_queue_test() ->
@@ -275,7 +303,7 @@ declare_setup() ->
 
 
 declare_stop(_) ->
-    mock:verify_and_stop(amqp_channel),
+    mock:stop(amqp_channel),
     ok.
 
 
@@ -299,11 +327,11 @@ declare_expects(Exchange, Queue, Binding) ->
                             BK =:= Binding->
                          true
                  end,
-                 fun({dummy_channel, #'queue.declare'{}}, 2) ->
+                 fun({dummy_channel, #'queue.declare'{}}, _Times) ->
                          #'queue.declare_ok'{queue=QName};
-                    ({dummy_channel, #'exchange.declare'{}}, 1) ->
+                    ({dummy_channel, #'exchange.declare'{}}, _Times) ->
                          #'exchange.declare_ok'{};
-                    ({dummy_channel, #'queue.bind'{}}, 3) ->
+                    ({dummy_channel, #'queue.bind'{}}, _Times) ->
                          #'queue.bind_ok'{}
                  end,
                  3),
@@ -320,7 +348,8 @@ declare_everything_test_() ->
                              <<"Foo">>),
              ?assertEqual({ok, {bunny_util:new_exchange(<<"Foo">>),
                                 bunny_util:new_queue(<<"Foo">>)}},
-                          bunny_util:declare(dummy_channel, <<"Foo">>))
+                          bunny_util:declare(dummy_channel, <<"Foo">>)),
+             mock:verify(amqp_channel)
          end])}.
 
 
@@ -335,7 +364,8 @@ declare_names_test_() ->
                                 bunny_util:new_queue(<<"Bar">>)}},
                            bunny_util:declare(
                             dummy_channel,
-                            {<<"Foo">>, <<"Bar">>, <<"Baz">>}))
+                            {<<"Foo">>, <<"Bar">>, <<"Baz">>})),
+             mock:verify(amqp_channel)
          end])}.
 
 
@@ -352,5 +382,131 @@ declare_records_test_() ->
                             dummy_channel,
                             {bunny_util:new_exchange(<<"Foo">>),
                              bunny_util:new_queue(<<"Bar">>),
-                             <<"Baz">>}))
+                             <<"Baz">>})),
+             mock:verify(amqp_channel)
          end])}.
+
+
+declare_exchange_test_() ->
+    {setup, fun declare_setup/0, fun declare_stop/1,
+     ?_test(
+        [begin
+             mock:expects(
+               amqp_channel, call,
+               fun({dummy_channel,
+                    #'exchange.declare'{exchange= <<"test">>}}) ->
+                       true
+               end,
+               #'exchange.declare_ok'{}),
+             ?assertMatch({ok, _Exchange},
+                          bunny_util:declare_exchange(
+                            dummy_channel,
+                            bunny_util:new_exchange(<<"test">>))),
+             mock:verify(amqp_channel)
+         end])}.
+
+declare_exchange_by_name_test_() ->
+    {setup, fun declare_setup/0, fun declare_stop/1,
+     ?_test(
+        [begin
+             mock:expects(
+               amqp_channel, call,
+               fun({dummy_channel,
+                    #'exchange.declare'{exchange= <<"test">>}}) ->
+                       true
+               end,
+               #'exchange.declare_ok'{}),
+             ?assertMatch({ok, _Exchange}, bunny_util:declare_exchange(
+                                             dummy_channel,
+                                             <<"test">>)),
+             mock:verify(amqp_channel)
+         end])}.
+
+
+declare_queue_test_() ->
+    {setup, fun declare_setup/0, fun declare_stop/1,
+     ?_test(
+        [begin
+             mock:expects(
+               amqp_channel, call,
+               fun({dummy_channel,
+                    #'queue.declare'{queue= <<"test">>}}) ->
+                       true
+               end,
+               #'queue.declare_ok'{}),
+             ?assertMatch({ok, _Queue}, bunny_util:declare_queue(
+                                          dummy_channel,
+                                          bunny_util:new_queue(<<"test">>))),
+             mock:verify(amqp_channel)
+         end])}.
+
+
+declare_queue_by_name_test_() ->
+    {setup, fun declare_setup/0, fun declare_stop/1,
+     ?_test(
+        [begin
+             mock:expects(
+               amqp_channel, call,
+               fun({dummy_channel,
+                    #'queue.declare'{queue= <<"test">>}}) ->
+                       true
+               end,
+               #'queue.declare_ok'{}),
+             ?assertMatch({ok, _Queue}, bunny_util:declare_queue(
+                                          dummy_channel,
+                                          <<"test">>)),
+             mock:verify(amqp_channel)
+         end])}.
+
+
+bind_queue_test_() ->
+    {setup, fun declare_setup/0, fun declare_stop/1,
+     ?_test(
+        [begin
+             mock:expects(
+               amqp_channel, call,
+               fun({dummy_channel,
+                    #'queue.bind'{exchange= <<"test">>,
+                                  queue= <<"test">>,
+                                  routing_key= <<"testKey">>}}) ->
+                       true
+               end,
+               #'queue.bind_ok'{}),
+             ?assertEqual(ok, bunny_util:bind_queue(
+                                dummy_channel,
+                                bunny_util:new_exchange(<<"test">>),
+                                bunny_util:new_queue(<<"test">>),
+                                <<"testKey">>)),
+             mock:verify(amqp_channel)
+         end])}.
+
+
+bind_queue_by_names_test_() ->
+    Exchanges = [<<"test">>, bunny_util:new_exchange(<<"test">>)],
+    Queues = [<<"testQueue">>, bunny_util:new_queue(<<"testQueue">>)],
+
+    {setup, fun declare_setup/0, fun declare_stop/1,
+     [?_test(
+         [begin
+              mock:expects(
+                amqp_channel, call,
+                fun({dummy_channel,
+                     #'queue.bind'{exchange= <<"test">>,
+                                   queue= <<"testQueue">>,
+                                   routing_key= <<"testKey">>}}) ->
+                        true
+                end,
+                #'queue.bind_ok'{}),
+
+              ?assertEqual(ok, bunny_util:bind_queue(
+                                 dummy_channel,
+                                     Exchange,
+                                     Queue,
+                                     <<"testKey">>)),
+
+              mock:verify(amqp_channel)
+          end]) || {Exchange, Queue} <-
+                       lists:zip(
+                         Exchanges ++ lists:reverse(Exchanges),
+                         Queues ++ lists:reverse(Queues)
+                        )]}.
