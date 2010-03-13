@@ -180,7 +180,7 @@ connect_test_() ->
         [begin
              direct_expects(?DEFAULT_USER, ?DEFAULT_PASS),
 
-             ?assertEqual({dummy_direct_conn, dummy_direct_channel}, bunny_util:connect())
+             ?assertEqual({ok, {dummy_direct_conn, dummy_direct_channel}}, bunny_util:connect())
          end])}.
 
 
@@ -189,7 +189,7 @@ connect_direct_test_() ->
      ?_test(
         [begin
              direct_expects(?DEFAULT_USER, ?DEFAULT_PASS),
-             ?assertEqual({dummy_direct_conn, dummy_direct_channel},
+             ?assertEqual({ok, {dummy_direct_conn, dummy_direct_channel}},
                           bunny_util:connect(direct))
          end])}.
 
@@ -199,7 +199,7 @@ connect_direct_creds_test_() ->
      ?_test(
         [begin
              direct_expects(<<"al">>, <<"franken">>),
-             ?assertEqual({dummy_direct_conn, dummy_direct_channel},
+             ?assertEqual({ok, {dummy_direct_conn, dummy_direct_channel}},
                           bunny_util:connect({direct, #amqp_params{
                                      username= <<"al">>,
                                      password= <<"franken">>}}))
@@ -215,7 +215,7 @@ connect_network_host_test_() ->
                              ?DEFAULT_USER,
                              ?DEFAULT_PASS,
                              ?DEFAULT_VHOST),
-             ?assertEqual({dummy_network_conn, dummy_network_channel},
+             ?assertEqual({ok, {dummy_network_conn, dummy_network_channel}},
                           bunny_util:connect({network, "amqp.example.com"}))
          end])}.
 
@@ -228,7 +228,7 @@ connect_network_host_port_test_() ->
                              ?DEFAULT_USER,
                              ?DEFAULT_PASS,
                              ?DEFAULT_VHOST),
-             ?assertEqual({dummy_network_conn, dummy_network_channel},
+             ?assertEqual({ok, {dummy_network_conn, dummy_network_channel}},
                           bunny_util:connect(
                             {network, "amqp.example.com", 10000}))
          end])}.
@@ -243,7 +243,7 @@ connect_network_host_port_creds_test_() ->
                              "al",
                              "franken",
                              ?DEFAULT_VHOST),
-             ?assertEqual({dummy_network_conn, dummy_network_channel},
+             ?assertEqual({ok, {dummy_network_conn, dummy_network_channel}},
                           bunny_util:connect(
                             {network, "amqp.example.com", 10000,
                              {"al", "franken"}}))
@@ -259,7 +259,7 @@ connect_network_host_port_creds_vhost_test_() ->
                              "al",
                              "franken",
                              <<"/awesome">>),
-             ?assertEqual({dummy_network_conn, dummy_network_channel},
+             ?assertEqual({ok, {dummy_network_conn, dummy_network_channel}},
                           bunny_util:connect(
                             {network, "amqp.example.com", 10000,
                              {"al", "franken"}, <<"/awesome">>}))
@@ -299,7 +299,13 @@ declare_expects(Exchange, Queue, Binding) ->
                             BK =:= Binding->
                          true
                  end,
-                 {Exchange, Queue},
+                 fun({dummy_channel, #'queue.declare'{}}, 2) ->
+                         #'queue.declare_ok'{queue=QName};
+                    ({dummy_channel, #'exchange.declare'{}}, 1) ->
+                         #'exchange.declare_ok'{};
+                    ({dummy_channel, #'queue.bind'{}}, 3) ->
+                         #'queue.bind_ok'{}
+                 end,
                  3),
     ok.
 
@@ -312,8 +318,8 @@ declare_everything_test_() ->
              declare_expects(bunny_util:new_exchange(<<"Foo">>),
                              bunny_util:new_queue(<<"Foo">>),
                              <<"Foo">>),
-             ?assertEqual({bunny_util:new_exchange(<<"Foo">>),
-                           bunny_util:new_queue(<<"Foo">>)},
+             ?assertEqual({ok, {bunny_util:new_exchange(<<"Foo">>),
+                                bunny_util:new_queue(<<"Foo">>)}},
                           bunny_util:declare(dummy_channel, <<"Foo">>))
          end])}.
 
@@ -325,9 +331,9 @@ declare_names_test_() ->
              declare_expects(bunny_util:new_exchange(<<"Foo">>),
                              bunny_util:new_queue(<<"Bar">>),
                              <<"Baz">>),
-             ?assertEqual({bunny_util:new_exchange(<<"Foo">>),
-                           bunny_util:new_queue(<<"Bar">>)},
-                          bunny_util:declare(
+             ?assertEqual({ok, {bunny_util:new_exchange(<<"Foo">>),
+                                bunny_util:new_queue(<<"Bar">>)}},
+                           bunny_util:declare(
                             dummy_channel,
                             {<<"Foo">>, <<"Bar">>, <<"Baz">>}))
          end])}.
@@ -340,8 +346,8 @@ declare_records_test_() ->
              declare_expects(bunny_util:new_exchange(<<"Foo">>),
                              bunny_util:new_queue(<<"Bar">>),
                              <<"Baz">>),
-             ?assertEqual({bunny_util:new_exchange(<<"Foo">>),
-                           bunny_util:new_queue(<<"Bar">>)},
+             ?assertEqual({ok, {bunny_util:new_exchange(<<"Foo">>),
+                                bunny_util:new_queue(<<"Bar">>)}},
                           bunny_util:declare(
                             dummy_channel,
                             {bunny_util:new_exchange(<<"Foo">>),

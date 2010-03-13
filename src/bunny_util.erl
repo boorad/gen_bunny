@@ -197,11 +197,11 @@ connect(direct) ->
 connect({direct, Params}) when is_record(Params, amqp_params) ->
     Connection = amqp_connection:start_direct(Params),
     Channel = amqp_connection:open_channel(Connection),
-    {Connection, Channel};
+    {ok, {Connection, Channel}};
 connect({network, Params}) when is_record(Params, amqp_params) ->
     Connection = amqp_connection:start_network(Params),
     Channel = amqp_connection:open_channel(Connection),
-    {Connection, Channel};
+    {ok, {Connection, Channel}};
 connect({network, Host}) ->
     connect({network, #amqp_params{host=Host}});
 connect({network, Host, Port}) ->
@@ -225,8 +225,8 @@ declare(Channel, {ExchangeName, QueueName, RoutingKey})
                       RoutingKey});
 declare(Channel, {Exchange, Queue, RoutingKey})
   when ?is_exchange(Exchange), ?is_queue(Queue), is_binary(RoutingKey) ->
-    amqp_channel:call(Channel, Exchange),
-    amqp_channel:call(Channel, Queue),
+    #'exchange.declare_ok'{} = amqp_channel:call(Channel, Exchange),
+    #'queue.declare_ok'{} = amqp_channel:call(Channel, Queue),
 
     ExchangeName = get_name(Exchange),
     QueueName = get_name(Queue),
@@ -235,6 +235,6 @@ declare(Channel, {Exchange, Queue, RoutingKey})
                             exchange=ExchangeName,
                             routing_key=RoutingKey},
 
-    amqp_channel:call(Channel, Binding),
+    #'queue.bind_ok'{} = amqp_channel:call(Channel, Binding),
 
-    {Exchange, Queue}.
+    {ok, {Exchange, Queue}}.

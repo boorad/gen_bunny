@@ -25,12 +25,12 @@ cds_expects(_DummyConn, DummyChannel, NoAck) ->
 
 cds_funs(DummyConn, DummyChannel) ->
     ConnectFun = fun(direct) ->
-                         {DummyConn, DummyChannel}
+                         {ok, {DummyConn, DummyChannel}}
                  end,
 
     DeclareFun = fun(Chan, <<"cds.test">>) when Chan =:= DummyChannel ->
-                         {bunny_util:new_exchange(<<"cds.test">>),
-                          bunny_util:new_queue(<<"cds.test">>)}
+                         {ok, {bunny_util:new_exchange(<<"cds.test">>),
+                               bunny_util:new_queue(<<"cds.test">>)}}
                  end,
 
     {ConnectFun, DeclareFun}.
@@ -121,13 +121,13 @@ test_gb_setup_1(NoAck) ->
                  ok),
 
     ConnectFun = fun(direct) ->
-                         {ConnectionPid, ChannelPid}
+                         {ok, {ConnectionPid, ChannelPid}}
                  end,
 
     DeclareFun = fun(Channel, <<"bunny.test">>)
                     when Channel =:= ChannelPid ->
-                         {bunny_util:new_exchange(<<"bunny.test">>),
-                          bunny_util:new_queue(<<"bunny.test">>)}
+                         {ok, {bunny_util:new_exchange(<<"bunny.test">>),
+                               bunny_util:new_queue(<<"bunny.test">>)}}
                  end,
 
     {ok, TestPid} = test_gb:start_link([{connect_fun, ConnectFun},
@@ -326,15 +326,15 @@ test_monitor_setup() ->
                          case get('_connect_fun_run_before') of
                              undefined ->
                                  put('_connect_fun_run_before', true),
-                                 {ConnectionPid, ChannelPid};
+                                 {ok, {ConnectionPid, ChannelPid}};
                              true ->
-                                 {NewConnectionPid, NewChannelPid}
+                                 {ok, {NewConnectionPid, NewChannelPid}}
                          end
                  end,
 
     DeclareFun = fun(_Channel, <<"bunny.test">>) ->
-                         {bunny_util:new_exchange(<<"bunny.test">>),
-                          bunny_util:new_queue(<<"bunny.test">>)}
+                         {ok, {bunny_util:new_exchange(<<"bunny.test">>),
+                               bunny_util:new_queue(<<"bunny.test">>)}}
                  end,
 
     {ok, TestPid} = test_gb:start_link([{connect_fun, ConnectFun},
@@ -463,12 +463,12 @@ test_crash_setup() ->
                  ok, 1),
 
     ConnectFun = fun(direct) ->
-                         {ConnectionPid, ChannelPid}
+                         {ok, {ConnectionPid, ChannelPid}}
                  end,
 
     DeclareFun = fun(_Channel, <<"bunny.test">>) ->
-                         {bunny_util:new_exchange(<<"bunny.test">>),
-                          bunny_util:new_queue(<<"bunny.test">>)}
+                         {ok, {bunny_util:new_exchange(<<"bunny.test">>),
+                               bunny_util:new_queue(<<"bunny.test">>)}}
                  end,
 
     {ok, TestPid} = test_gb:start_link([{connect_fun, ConnectFun},

@@ -275,7 +275,7 @@ connect_declare_subscribe(ConnectFun, DeclareFun,
     case catch ConnectFun(ConnectionInfo) of
         {'EXIT', {Reason, _Stack}} ->
             Reason;
-        {ConnectionPid, ChannelPid} when is_pid(ConnectionPid),
+        {ok, {ConnectionPid, ChannelPid}} when is_pid(ConnectionPid),
                                          is_pid(ChannelPid) ->
             case declare_subscribe(ChannelPid, DeclareFun,
                                    DeclareInfo, NoAck) of
@@ -290,7 +290,7 @@ declare_subscribe(ChannelPid, DeclareFun, DeclareInfo, NoAck) ->
     case catch DeclareFun(ChannelPid, DeclareInfo) of
         {'EXIT', {Reason, _Stack}} ->
             Reason;
-        {_Exchange, Queue} when ?is_queue(Queue) ->
+        {ok, {_Exchange, Queue}} when ?is_queue(Queue) ->
             QueueName = bunny_util:get_name(Queue),
             amqp_channel:subscribe(ChannelPid,
                                    #'basic.consume'{queue=QueueName,
