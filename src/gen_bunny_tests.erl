@@ -66,42 +66,6 @@ cds_noack_test_() ->
          end])}.
 
 
-cds_conn_error_test_() ->
-    ConnectFun = fun(direct) ->
-                         {'EXIT', {{blah, "You suck"}, []}}
-                 end,
-
-    {setup, fun cds_setup/0, fun cds_stop/1,
-     ?_test(
-        [begin
-             ?assertEqual(
-                {blah, "You suck"},
-                gen_bunny:connect_declare_subscribe(
-                  ConnectFun, noop,
-                  direct, <<"cds.test">>, true))
-         end])}.
-
-
-cds_declare_error_test_() ->
-    DummyConn = c:pid(0,0,0),
-    DummyChannel = c:pid(0,0,1),
-    {ConnectFun, _} = cds_funs(DummyConn, DummyChannel),
-
-    DeclareFun = fun(Chan, <<"cds.test">>) when Chan =:= DummyChannel ->
-                         {'EXIT', {{blah, "I declare that you suck"}, []}}
-                 end,
-
-    {setup, fun cds_setup/0, fun cds_stop/1,
-     ?_test(
-        [begin
-             ?assertEqual(
-                {blah, "I declare that you suck"},
-                gen_bunny:connect_declare_subscribe(
-                             ConnectFun, DeclareFun,
-                             direct, <<"cds.test">>, true))
-         end])}.
-
-
 test_gb_setup_1(NoAck) ->
     {ok, _} = mock:mock(amqp_channel),
     {ok, _} = mock:mock(amqp_connection),

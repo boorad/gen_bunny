@@ -271,33 +271,19 @@ code_change(_OldVersion, State, _Extra) ->
 %% TODO: better error handling here.
 connect_declare_subscribe(ConnectFun, DeclareFun,
                           ConnectionInfo, DeclareInfo, NoAck) ->
-    %% TODO: link?
-    case catch ConnectFun(ConnectionInfo) of
-        {'EXIT', {Reason, _Stack}} ->
-            Reason;
-        {ok, {ConnectionPid, ChannelPid}} when is_pid(ConnectionPid),
-                                         is_pid(ChannelPid) ->
-            case declare_subscribe(ChannelPid, DeclareFun,
-                                   DeclareInfo, NoAck) of
-                {ok, QueueName} ->
-                    {ok, ConnectionPid, ChannelPid, QueueName};
-                Reason ->
-                    Reason
-            end
-    end.
+    {ok, {ConnectionPid, ChannelPid}} = ConnectFun(ConnectionInfo),
+    {ok, QueueName} = declare_subscribe(ChannelPid, DeclareFun,
+                                        DeclareInfo, NoAck),
+    {ok, ConnectionPid, ChannelPid, QueueName}.
 
 declare_subscribe(ChannelPid, DeclareFun, DeclareInfo, NoAck) ->
-    case catch DeclareFun(ChannelPid, DeclareInfo) of
-        {'EXIT', {Reason, _Stack}} ->
-            Reason;
-        {ok, {_Exchange, Queue}} when ?is_queue(Queue) ->
-            QueueName = bunny_util:get_name(Queue),
-            amqp_channel:subscribe(ChannelPid,
-                                   #'basic.consume'{queue=QueueName,
-                                                    no_ack=NoAck},
-                                   self()),
-            {ok, QueueName}
-    end.
+    {ok, {_Exchange, Queue}} = DeclareFun(ChannelPid, DeclareInfo),
+    QueueName = bunny_util:get_name(Queue),
+    amqp_channel:subscribe(ChannelPid,
+                           #'basic.consume'{queue=QueueName,
+                                            no_ack=NoAck},
+                           self()),
+    {ok, QueueName}.
 
 get_opt(Opt, Proplist, Default) ->
     {proplists:get_value(Opt, Proplist, Default),
