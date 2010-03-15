@@ -89,9 +89,9 @@ init([ConnectionInfo, DeclareInfo, Args]) ->
     DeclareFun = proplists:get_value(declare_fun, Args,
                                      fun bunny_util:declare/2),
 
-    {ConnectionPid, ChannelPid} = ConnectFun(ConnectionInfo),
+    {ok, {ConnectionPid, ChannelPid}} = ConnectFun(ConnectionInfo),
 
-    {Exchange, Queue} = DeclareFun(ChannelPid, DeclareInfo),
+    {ok, {Exchange, Queue}} = DeclareFun(ChannelPid, DeclareInfo),
 
     {ok, #bunnyc_state{connection=ConnectionPid,
                 channel=ChannelPid,

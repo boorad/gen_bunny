@@ -20,13 +20,13 @@ bunnyc_stop(_) ->
 connect_and_declare_expects(TestName) ->
     [{connect_fun,
       fun(direct) ->
-              {dummy_conn, dummy_channel}
+              {ok, {dummy_conn, dummy_channel}}
       end},
 
      {declare_fun,
       fun(dummy_channel, N) when N =:= TestName ->
-              {#'exchange.declare'{exchange = TestName},
-               #'queue.declare'{queue = TestName}}
+              {ok, {#'exchange.declare'{exchange = TestName},
+                    #'queue.declare'{queue = TestName}}}
       end}].
 
 
