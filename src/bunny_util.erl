@@ -74,43 +74,41 @@
 %% @doc Construct a new message with a binary Payload.
 -spec(new_message(payload()) -> message()).
 new_message(Payload) when is_binary(Payload) ->
-    #content{class_id=60,
-             properties=#'P_basic'{},
-             properties_bin=none,
-             payload_fragments_rev=[Payload]}.
+    #amqp_msg{props=#'P_basic'{},
+              payload=Payload}.
 
 %% @spec get_payload(Message::message()) -> payload()
 %% @doc Return the payload for a message.
 -spec(get_payload(message()) -> payload()).
-get_payload(#content{payload_fragments_rev=[Payload]}) ->
+get_payload(#amqp_msg{payload=Payload}) ->
     Payload.
 
 %% @spec get_delivery_mode(Message::message()) -> delivery_mode()
 %% @doc Return the delivery mode for Message.
 -spec(get_delivery_mode(message()) -> delivery_mode()).
 get_delivery_mode(Message) when ?is_message(Message) ->
-    (Message#content.properties)#'P_basic'.delivery_mode.
+    (Message#amqp_msg.props)#'P_basic'.delivery_mode.
 
 %% @spec set_delivery_mode(Message::message(), Mode::delivery_mode())
 %%        -> message()
 %% @doc Set the delivery mode for Message.
 -spec(set_delivery_mode(message(), delivery_mode()) -> message()).
-set_delivery_mode(Message = #content{properties=Props}, Mode)
+set_delivery_mode(Message = #amqp_msg{props=Props}, Mode)
   when ?is_message(Message), is_integer(Mode) ->
-    Message#content{properties=Props#'P_basic'{delivery_mode=Mode}}.
+    Message#amqp_msg{props=Props#'P_basic'{delivery_mode=Mode}}.
 
 %% @spec get_content_type(Message::message()) -> content_type()
 %% @doc Return the content type for Message.
 -spec(get_content_type(message()) -> content_type()).
 get_content_type(Message) when ?is_message(Message) ->
-    (Message#content.properties)#'P_basic'.content_type.
+    (Message#amqp_msg.props)#'P_basic'.content_type.
 
 %% @spec set_content_type(Message::message(), Type::content_type()) -> message()
 %% @doc Set the content type for Message to Type.
 -spec(set_content_type(message(), content_type()) -> message()).
-set_content_type(Message = #content{properties=Props}, Type)
+set_content_type(Message = #amqp_msg{props=Props}, Type)
   when ?is_message(Message), is_binary(Type) ->
-    Message#content{properties=Props#'P_basic'{content_type=Type}}.
+    Message#amqp_msg{props=Props#'P_basic'{content_type=Type}}.
 
 %%
 %% Exchange helpers

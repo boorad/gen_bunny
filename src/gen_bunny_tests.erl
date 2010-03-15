@@ -169,49 +169,18 @@ test_gb_handle_message_test_() ->
      end}.
 
 
-test_gb_handle_message_decode_properties_test_() ->
-    {setup, fun test_gb_setup/0, fun test_gb_stop/1,
-     fun({_ConnectionPid, _ChannelPid, TestPid}) ->
-             ?_test(
-                [begin
-                     ExpectedMessage = {
-                       content, 60, #'P_basic'{content_type= <<"application/octet-stream">>,
-                                               delivery_mode=1,
-                                               priority=0},
-                       <<152,0,24,97,112,112,108,105,99,97,116,105,111,110,
-                        47,111,99,116,101,116,45,115,116,114,101,97,109,1,0>>,
-                       [<<"zomgasdfasdf">>]},
-                     RawMessage = {
-                       content, 60, none,
-                       <<152,0,24,97,112,112,108,105,99,97,116,105,111,110,
-                        47,111,99,116,101,116,45,115,116,114,101,97,109,1,0>>,
-                       [<<"zomgasdfasdf">>]},
-                     TestPid ! {#'basic.deliver'{}, RawMessage},
-                     ?assertEqual([ExpectedMessage], test_gb:get_messages(TestPid))
-                 end])
-     end}.
-
-
 test_gb_handle_message_noack_false_test_() ->
     {setup, fun test_gb_noack_false_setup/0, fun test_gb_stop/1,
      fun({_ConnectionPid, ChannelPid, TestPid}) ->
              ?_test(
                 [begin
-                     ExpectedMessage =
-                         {{ChannelPid, 1}, {
-                            content, 60, #'P_basic'{content_type= <<"application/octet-stream">>,
-                                                    delivery_mode=1,
-                                                    priority=0},
-                            <<152,0,24,97,112,112,108,105,99,97,116,105,111,110,
-                              47,111,99,116,101,116,45,115,116,114,101,97,109,1,0>>,
-                            [<<"zomgasdfasdf">>]}},
-                     RawMessage = {
-                       content, 60, none,
-                       <<152,0,24,97,112,112,108,105,99,97,116,105,111,110,
-                        47,111,99,116,101,116,45,115,116,114,101,97,109,1,0>>,
-                       [<<"zomgasdfasdf">>]},
-                     TestPid ! {#'basic.deliver'{delivery_tag=1}, RawMessage},
-                     ?assertEqual([ExpectedMessage], test_gb:get_messages(TestPid))
+                     Message = bunny_util:new_message(<<"zomgasdfasdf">>),
+                     ExpectedTaggedMessage =
+                         {{ChannelPid, 1}, Message},
+                     TestPid ! {#'basic.deliver'{delivery_tag=1},
+                                Message},
+                     ?assertEqual([ExpectedTaggedMessage],
+                                  test_gb:get_messages(TestPid))
                  end])
      end}.
 

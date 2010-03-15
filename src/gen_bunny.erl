@@ -176,22 +176,20 @@ handle_cast(Msg, State=#gen_bunny_state{mod=Module, modstate=ModState}) ->
             {stop, Reason, State#gen_bunny_state{modstate=NewModState}}
     end.
 
-handle_info({Envelope=#'basic.deliver'{},
-             Message0},
-            State=#gen_bunny_state{no_ack=NoAck, mod=Module, modstate=ModState,
-                         channel=Channel})
+handle_info({Envelope=#'basic.deliver'{}, Message0},
+            State=#gen_bunny_state{no_ack=NoAck,
+                                   mod=Module, modstate=ModState,
+                                   channel=Channel})
   when ?is_message(Message0) ->
-    Message1 = rabbit_binary_parser:ensure_content_decoded(Message0),
-
     Message = case NoAck of
                   true ->
-                      Message1;
+                      Message0;
                   false ->
                       {{Channel, Envelope#'basic.deliver'.delivery_tag},
-                       Message1}
+                       Message0}
               end,
 
-    case Module:handle_message(Message, ModState) of
+    case catch Module:handle_message(Message, ModState) of
         {noreply, NewModState} ->
             {noreply, State#gen_bunny_state{modstate=NewModState}};
         {noreply, NewModState, A} when A =:= hibernate orelse is_number(A) ->
@@ -243,7 +241,6 @@ handle_info({'DOWN', MonitorRef, process, _Object, _Info},
                           channel_mon=NewChannelRef,
                           connection_mon=NewConnectionRef}};
 handle_info(Info, State=#gen_bunny_state{mod=Module, modstate=ModState}) ->
-    io:format("Unknown info message: ~p~n", [Info]),
     case Module:handle_info(Info, ModState) of
         {noreply, NewModState} ->
             {noreply, State#gen_bunny_state{modstate=NewModState}};

@@ -6,7 +6,7 @@
 -define(is_queue(X), element(1, X) =:= 'queue.declare').
 -define(is_exchange(X), element(1, X) =:= 'exchange.declare').
 -define(is_binding(X), element(1, X) =:= binding).
--define(is_message(X), element(1, X) =:= content).
+-define(is_message(X), element(1, X) =:= amqp_msg).
 -define(is_tagged_message(X),
         (is_pid(element(1, element(1, X))) andalso
          is_integer(element(2, element(1, X))) andalso

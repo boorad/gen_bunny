@@ -125,18 +125,16 @@ publish_message_test_() ->
              ExpectedMessage = bunny_util:set_delivery_mode(
                                  bunny_util:new_message(<<"HELLO">>),
                                  2),
-             ExpectedPayload = bunny_util:get_payload(ExpectedMessage),
 
              mock:expects(
                amqp_channel, call,
                fun({dummy_channel, #'basic.publish'{exchange=Exchange,
                                                     routing_key=Key},
-                    #amqp_msg{props=Props, payload=Payload}}) ->
+                    Message = #amqp_msg{}}) ->
                        Exchange =:= <<"bunnyc.test">>
                            andalso Key =:= <<"bunnyc.test">>
-                           andalso (
-                             ExpectedMessage#content.properties =:= Props)
-                           andalso (ExpectedPayload =:= Payload)
+                           andalso ExpectedMessage =:= Message
+
                end,
                ok),
              ?assertEqual(ok, bunnyc:publish(
@@ -153,19 +151,15 @@ async_publish_message_test_() ->
              ExpectedMessage = bunny_util:set_delivery_mode(
                                  bunny_util:new_message(<<"HELLO">>),
                                  2),
-             ExpectedPayload = bunny_util:get_payload(ExpectedMessage),
 
              mock:expects(
                amqp_channel, cast,
                fun({dummy_channel, #'basic.publish'{exchange=Exchange,
                                                     routing_key=Key},
-                    #amqp_msg{props=Props, payload=Payload}}) ->
+                    Message = #amqp_msg{}}) ->
                        Exchange =:= <<"bunnyc.test">>
                            andalso Key =:= <<"bunnyc.test">>
-                           andalso (
-                             ExpectedMessage#content.properties =:= Props)
-                           andalso (
-                             ExpectedPayload =:= Payload)
+                           andalso ExpectedMessage =:= Message
                end,
                ok),
              ?assertEqual(ok, bunnyc:async_publish(

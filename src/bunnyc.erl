@@ -151,15 +151,12 @@ internal_publish(Fun, Channel, Exchange, Key, Message, Opts)
   when ?is_message(Message) ->
     Mandatory = proplists:get_value(mandatory, Opts, false),
 
-    AmqpMsg = #amqp_msg{props=Message#content.properties,
-                        payload=bunny_util:get_payload(Message)},
-
     BasicPublish = #'basic.publish'{
       exchange = bunny_util:get_name(Exchange),
       routing_key = Key,
       mandatory = Mandatory},
 
-    Fun(Channel, BasicPublish, AmqpMsg);
+    Fun(Channel, BasicPublish, Message);
 internal_publish(Fun, Channel, Exchange, Key, Message, Opts)
   when is_binary(Message) ->
     internal_publish(Fun, Channel, Exchange, Key,

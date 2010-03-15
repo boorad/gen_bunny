@@ -17,36 +17,36 @@ new_message_test() ->
     Foo = bunny_util:new_message(<<"Foo">>),
     ?assert(?is_message(Foo)),
     ?assertMatch(
-       #content{payload_fragments_rev=[Payload]} when Payload =:= <<"Foo">>,
+       #amqp_msg{payload= <<"Foo">>},
        Foo).
 
 
 get_payload_test() ->
-    Bar = #content{payload_fragments_rev=[<<"Bar">>]},
+    Bar = #amqp_msg{payload= <<"Bar">>},
     ?assertEqual(<<"Bar">>, bunny_util:get_payload(Bar)).
 
 
 set_delivery_mode_test() ->
     Foo = bunny_util:new_message(<<"Foo">>),
     FooModed = bunny_util:set_delivery_mode(Foo, 2),
-    ?assertEqual((FooModed#content.properties)#'P_basic'.delivery_mode, 2).
+    ?assertEqual((FooModed#amqp_msg.props)#'P_basic'.delivery_mode, 2).
 
 
 get_delivery_mode_test() ->
-    Msg = #content{properties=#'P_basic'{delivery_mode=2}},
+    Msg = #amqp_msg{props=#'P_basic'{delivery_mode=2}},
     ?assertEqual(2, bunny_util:get_delivery_mode(Msg)).
 
 
 set_content_type_test() ->
     Msg = bunny_util:new_message(<<"true">>),
     NewMsg = bunny_util:set_content_type(Msg, <<"application/json">>),
-    ?assertEqual((NewMsg#content.properties)#'P_basic'.content_type,
+    ?assertEqual((NewMsg#amqp_msg.props)#'P_basic'.content_type,
                  <<"application/json">>).
 
 
 get_content_type_test() ->
-    Msg = #content{
-      properties=#'P_basic'{content_type = <<"application/json">>}},
+    Msg = #amqp_msg{
+      props=#'P_basic'{content_type = <<"application/json">>}},
     ?assertEqual(<<"application/json">>, bunny_util:get_content_type(Msg)).
 
 
