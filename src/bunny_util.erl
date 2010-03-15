@@ -224,9 +224,15 @@ connect({network, Host, Port, {User, Pass}, VHost}) ->
                                    virtual_host=VHost}}).
 
 
+
 declare(Channel, NameForEverything) when is_binary(NameForEverything) ->
     declare(Channel,
             {NameForEverything, NameForEverything, NameForEverything});
+
+declare(Channel, {Exchange}) ->
+    {ok, Exchange1} = declare_exchange(Channel, Exchange),
+    {ok, {Exchange1, no_queue}};
+
 declare(Channel, {Exchange, Queue, RoutingKey})
   when is_binary(RoutingKey) ->
     {ok, Exchange1} = declare_exchange(Channel, Exchange),

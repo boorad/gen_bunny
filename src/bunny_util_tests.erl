@@ -387,6 +387,52 @@ declare_records_test_() ->
          end])}.
 
 
+declare_only_exchange_test_() ->
+    {setup, fun declare_setup/0, fun declare_stop/1,
+     ?_test(
+        [begin
+             Exchange = bunny_util:new_exchange(<<"Foo">>),
+
+             mock:expects(amqp_channel, call,
+                          fun({dummy_channel, E = #'exchange.declare'{}})
+                                when E =:= Exchange ->
+                                  true
+                             end,
+                          #'exchange.declare_ok'{}),
+
+             ?assertEqual({ok, {bunny_util:new_exchange(<<"Foo">>),
+                                no_queue}},
+                          bunny_util:declare(
+                            dummy_channel,
+                            {bunny_util:new_exchange(<<"Foo">>)})),
+
+             mock:verify(amqp_channel)
+         end])}.
+
+
+declare_only_exchange_by_name_test_() ->
+    {setup, fun declare_setup/0, fun declare_stop/1,
+     ?_test(
+        [begin
+             Exchange = bunny_util:new_exchange(<<"Foo">>),
+
+             mock:expects(amqp_channel, call,
+                          fun({dummy_channel, E = #'exchange.declare'{}})
+                                when E =:= Exchange ->
+                                  true
+                             end,
+                          #'exchange.declare_ok'{}),
+
+             ?assertEqual({ok, {bunny_util:new_exchange(<<"Foo">>),
+                                no_queue}},
+                          bunny_util:declare(
+                            dummy_channel,
+                            {<<"Foo">>})),
+
+             mock:verify(amqp_channel)
+         end])}.
+
+
 declare_exchange_test_() ->
     {setup, fun declare_setup/0, fun declare_stop/1,
      ?_test(
