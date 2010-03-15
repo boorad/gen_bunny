@@ -6,7 +6,13 @@
   {modules,      [
                   bunnyc,
                   bunny_util,
-                  gen_bunny
+                  gen_bunny,
+
+                  %% Unit tests
+                  test_gb,
+                  bunny_util_tests,
+                  gen_bunny_tests,
+                  bunnyc_tests
                  ]},
   {registered,   []},
   {mod,          {gen_bunny_app, []}},
