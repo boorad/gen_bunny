@@ -37,9 +37,7 @@
                           connection_info,
                           declare_info,
                           consumer_tag,
-                          no_ack,
-                          channel_mon,
-                          connection_mon}).
+                          no_ack}).
 
 -record(bunnyc_state, {connection, channel, exchange, queue, key}).
 

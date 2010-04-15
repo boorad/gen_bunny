@@ -66,6 +66,7 @@ start_link(Module, ConnectionInfo, DeclareInfo, InitArgs)
   when is_atom(ConnectionInfo) orelse is_tuple(ConnectionInfo),
        is_binary(DeclareInfo) orelse is_tuple(DeclareInfo),
        is_list(InitArgs) ->
+    gen_bunny_mon:start_link(),
     gen_server:start_link(
       ?MODULE,
       [Module, ConnectionInfo, DeclareInfo, InitArgs],
@@ -84,30 +85,27 @@ cast(Dest, Request) ->
 init([Module, ConnectionInfo, DeclareInfo, InitArgs0]) ->
     {NoAck, InitArgs1} = get_opt(no_ack, InitArgs0, true),
     {ConnectFun, InitArgs2} = get_opt(connect_fun, InitArgs1,
-                                      fun bunny_util:connect/1),
+                                      fun gen_bunny_mon:connect/1),
     {DeclareFun, InitArgs3} = get_opt(declare_fun, InitArgs2,
                                       fun bunny_util:declare/2),
 
     case Module:init(InitArgs3) of
         {ok, ModState} ->
-            case connect_declare_subscribe(
-                   ConnectFun, DeclareFun,
-                   ConnectionInfo, DeclareInfo, NoAck) of
-                {ok, ConnectionPid, ChannelPid, QueueName} ->
-                    ChannelRef = erlang:monitor(process, ChannelPid),
-                    ConnectionRef = erlang:monitor(process, ConnectionPid),
+            case catch ConnectFun(ConnectionInfo) of
+                {ok, {ConnectionPid, ChannelPid}} ->
+                    {ok, QueueName} = declare_subscribe(
+                                        ChannelPid, DeclareFun,
+                                        DeclareInfo, NoAck),
                     {ok, #gen_bunny_state{connect_fun=ConnectFun,
-                                declare_fun=DeclareFun,
-                                mod=Module,
-                                modstate=ModState,
-                                channel=ChannelPid,
-                                connection=ConnectionPid,
-                                connection_info=ConnectionInfo,
-                                declare_info=DeclareInfo,
-                                queue=QueueName,
-                                no_ack=NoAck,
-                                channel_mon=ChannelRef,
-                                connection_mon=ConnectionRef}};
+                                          declare_fun=DeclareFun,
+                                          mod=Module,
+                                          modstate=ModState,
+                                          channel=ChannelPid,
+                                          connection=ConnectionPid,
+                                          connection_info=ConnectionInfo,
+                                          declare_info=DeclareInfo,
+                                          queue=QueueName,
+                                          no_ack=NoAck}};
                 {_ErrClass, {error, Reason}} ->
                     Module:terminate(Reason, ModState),
                     {stop, Reason}
@@ -200,46 +198,16 @@ handle_info({Envelope=#'basic.deliver'{}, Message0},
 handle_info(#'basic.consume_ok'{consumer_tag=CTag},
             State=#gen_bunny_state{}) ->
     {noreply, State#gen_bunny_state{consumer_tag=CTag}};
-handle_info({'DOWN', MonitorRef, process, _Object, _Info},
-            State=#gen_bunny_state{channel_mon=ChannelRef,
-                         connection=Connection,
-                         declare_fun=DeclareFun,
-                         declare_info=DeclareInfo,
-                         no_ack=NoAck})
-  when MonitorRef =:= ChannelRef ->
-    true = erlang:demonitor(ChannelRef),
-    Channel = amqp_connection:open_channel(Connection),
-    NewChannelRef = erlang:monitor(process, Channel),
-    {ok, QueueName} =
-        declare_subscribe(
-          Channel, DeclareFun, DeclareInfo, NoAck),
+handle_info({reconnected, {ConnectionPid, ChannelPid}},
+            State=#gen_bunny_state{declare_fun=DeclareFun,
+                                   declare_info=DeclareInfo,
+                                   no_ack=NoAck}) ->
+    {ok, QueueName} = declare_subscribe(ChannelPid, DeclareFun,
+                                        DeclareInfo, NoAck),
 
-    {noreply, State#gen_bunny_state{queue=QueueName,
-                          channel=Channel,
-                          channel_mon=NewChannelRef}};
-handle_info({'DOWN', MonitorRef, process, _Object, _Info},
-            State=#gen_bunny_state{channel_mon=ChannelRef,
-                         connection_mon=ConnectionRef,
-                         connect_fun=ConnectFun,
-                         connection_info=ConnectionInfo,
-                         declare_fun=DeclareFun,
-                         declare_info=DeclareInfo,
-                         no_ack=NoAck})
-  when MonitorRef =:= ConnectionRef ->
-    true = erlang:demonitor(ChannelRef),
-    true = erlang:demonitor(ConnectionRef),
-    {ok, NewConnection, NewChannel, QueueName} =
-        connect_declare_subscribe(
-          ConnectFun, DeclareFun, ConnectionInfo, DeclareInfo, NoAck),
-
-    NewConnectionRef = erlang:monitor(process, NewConnection),
-    NewChannelRef = erlang:monitor(process, NewChannel),
-
-    {noreply, State#gen_bunny_state{queue=QueueName,
-                          connection=NewConnection,
-                          channel=NewChannel,
-                          channel_mon=NewChannelRef,
-                          connection_mon=NewConnectionRef}};
+    {noreply, State#gen_bunny_state{connection=ConnectionPid,
+                                    channel=ChannelPid,
+                                    queue=QueueName}};
 handle_info(Info, State=#gen_bunny_state{mod=Module, modstate=ModState}) ->
     case Module:handle_info(Info, ModState) of
         {noreply, NewModState} ->
@@ -265,14 +233,8 @@ code_change(_OldVersion, State, _Extra) ->
     %% TODO:  support code changes?
     {ok, State}.
 
-%% TODO: better error handling here.
-connect_declare_subscribe(ConnectFun, DeclareFun,
-                          ConnectionInfo, DeclareInfo, NoAck) ->
-    {ok, {ConnectionPid, ChannelPid}} = ConnectFun(ConnectionInfo),
-    {ok, QueueName} = declare_subscribe(ChannelPid, DeclareFun,
-                                        DeclareInfo, NoAck),
-    {ok, ConnectionPid, ChannelPid, QueueName}.
 
+%% TODO: better error handling here.
 declare_subscribe(ChannelPid, DeclareFun, DeclareInfo, NoAck) ->
     {ok, {_Exchange, Queue}} = DeclareFun(ChannelPid, DeclareInfo),
     QueueName = bunny_util:get_name(Queue),

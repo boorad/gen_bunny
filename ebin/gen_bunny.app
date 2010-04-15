@@ -7,6 +7,7 @@
                   bunnyc,
                   bunny_util,
                   gen_bunny,
+                  gen_bunny_mon,
 
                   %% Unit tests
                   test_gb,
