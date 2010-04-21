@@ -86,7 +86,7 @@ stop(Name) ->
 
 init([ConnectionInfo, DeclareInfo, Args]) ->
     ConnectFun = proplists:get_value(connect_fun, Args,
-                                     fun bunny_util:connect/1),
+                                     fun gen_bunny_mon:connect/1),
     DeclareFun = proplists:get_value(declare_fun, Args,
                                      fun bunny_util:declare/2),
 
