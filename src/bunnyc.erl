@@ -72,6 +72,7 @@ ack(Name, Tag) ->
 
 
 start_link(Name, ConnectionInfo, DeclareInfo, Args) ->
+    application:start(gen_bunny),
     gen_server:start_link({local, Name}, ?MODULE, [ConnectionInfo, DeclareInfo, Args], []).
 
 

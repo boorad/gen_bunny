@@ -66,7 +66,7 @@ start_link(Module, ConnectionInfo, DeclareInfo, InitArgs)
   when is_atom(ConnectionInfo) orelse is_tuple(ConnectionInfo),
        is_binary(DeclareInfo) orelse is_tuple(DeclareInfo),
        is_list(InitArgs) ->
-    gen_bunny_mon:start_link(),
+    application:start(gen_bunny),
     gen_server:start_link(
       ?MODULE,
       [Module, ConnectionInfo, DeclareInfo, InitArgs],

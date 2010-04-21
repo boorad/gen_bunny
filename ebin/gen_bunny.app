@@ -8,6 +8,8 @@
                   bunny_util,
                   gen_bunny,
                   gen_bunny_mon,
+                  gen_bunny_app,
+                  gen_bunny_sup,
 
                   %% Unit tests
                   test_gb,
@@ -18,4 +20,4 @@
   {registered,   []},
   {mod,          {gen_bunny_app, []}},
   {env,          []},
-  {applications, [kernel, stdlib, sasl, crypto]}]}.
+  {applications, [kernel, stdlib]}]}.
