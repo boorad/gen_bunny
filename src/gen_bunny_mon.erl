@@ -36,7 +36,8 @@
 -record(connection,
         {
           consumer,
-          info
+          info,
+          connection_pid,
         }).
 
 %% ------------------------------------------------------------------
@@ -104,13 +105,24 @@ handle_info({'DOWN', ConnectionRef, process, _Object, _Info}, State) ->
     {Connection, State1} = remove_connection(ConnectionRef, State),
 
     ConsumerPid = Connection#connection.consumer,
-    ConnectionInfo = Connection#connection.info,
 
-    NotifyOnConnect = fun(Pids) ->
-                              ConsumerPid ! {reconnected, Pids}
-                      end,
+    case is_process_alive(ConsumerPid) of
+        true ->
+            ConnectionInfo = Connection#connection.info,
 
-    schedule_reconnect(ConsumerPid, ConnectionInfo, NotifyOnConnect),
+            NotifyOnConnect = fun(Pids) ->
+                                      ConsumerPid ! {reconnected, Pids}
+                              end,
+
+            schedule_reconnect(ConsumerPid, ConnectionInfo, NotifyOnConnect);
+        false ->
+            %% Don't schedule a reconnect if our ConsumerPid is down.
+            error_logger:info_report(
+              ["Missing consumer, not scheduling reconnect",
+               {info, ConnectionInfo},
+               {consumer_pid, ConsumerPid}])
+    end,
+
     {noreply, State1};
 handle_info({reconnect,
              ConsumerPid, ConnectionInfo,
@@ -149,7 +161,8 @@ add_connection(ConsumerPid, ConnectionPid, ConnectionInfo,
     State#gen_bunny_mon{
       connections=dict:store(ConnectionRef,
                              #connection{consumer=ConsumerPid,
-                                         info=ConnectionInfo},
+                                         info=ConnectionInfo,
+                                         connection_pid=ConnectionPid},
                              Connections)}.
 
 
@@ -160,7 +173,7 @@ remove_connection(ConnectionRef,
     {ok, Connection} = dict:find(ConnectionRef, Connections),
     NewConnections = dict:erase(ConnectionRef, Connections),
 
-    {Connection, State#gen_bunny_mon{
+    {upgrade_connection(Connection), State#gen_bunny_mon{
                    connections=NewConnections}}.
 
 
@@ -183,3 +196,8 @@ do_connect(ConsumerPid, ConnectionInfo,
             {{connection_error, {{Type, What, erlang:get_stacktrace()},
                                  {connection_info, ConnectionInfo}}}, State}
     end.
+
+
+upgrade_connection({connection, ConsumerPid, ConnectionInfo}) ->
+    #connection{consumer=ConsumerPid,
+                info=ConnectionInfo}.
