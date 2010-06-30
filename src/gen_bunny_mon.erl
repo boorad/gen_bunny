@@ -75,7 +75,7 @@ get_state() ->
 %% ------------------------------------------------------------------
 
 init([ConnectFun]) ->
-    {okg, #gen_bunny_mon{connect_fun=ConnectFun}}.
+    {ok, #gen_bunny_mon{connect_fun=ConnectFun}}.
 
 handle_call(get_state, _From, State) ->
     {reply, {ok, State}, State};
