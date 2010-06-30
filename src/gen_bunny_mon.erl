@@ -37,7 +37,7 @@
         {
           consumer,
           info,
-          connection_pid,
+          connection_pid
         }).
 
 %% ------------------------------------------------------------------
@@ -75,7 +75,7 @@ get_state() ->
 %% ------------------------------------------------------------------
 
 init([ConnectFun]) ->
-    {ok, #gen_bunny_mon{connect_fun=ConnectFun}}.
+    {okg, #gen_bunny_mon{connect_fun=ConnectFun}}.
 
 handle_call(get_state, _From, State) ->
     {reply, {ok, State}, State};
@@ -105,11 +105,10 @@ handle_info({'DOWN', ConnectionRef, process, _Object, _Info}, State) ->
     {Connection, State1} = remove_connection(ConnectionRef, State),
 
     ConsumerPid = Connection#connection.consumer,
+    ConnectionInfo = Connection#connection.info,
 
     case is_process_alive(ConsumerPid) of
         true ->
-            ConnectionInfo = Connection#connection.info,
-
             NotifyOnConnect = fun(Pids) ->
                                       ConsumerPid ! {reconnected, Pids}
                               end,
