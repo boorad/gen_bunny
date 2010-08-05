@@ -26,6 +26,7 @@
 -define(SERVER, ?MODULE).
 
 -define(RECONNECT_DELAY, timer:seconds(1)).
+-define(CONNECT_TIMEOUT, timer:seconds(30)).
 
 -record(gen_bunny_mon,
         {
@@ -66,7 +67,8 @@ start_link(ConnectFun) ->
                           []).
 
 connect(ConnectionInfo) ->
-    gen_server:call(?SERVER, {connect, self(), ConnectionInfo}).
+    gen_server:call(?SERVER, {connect, self(), ConnectionInfo},
+                    ?CONNECT_TIMEOUT).
 
 get_state() ->
     gen_server:call(?SERVER, get_state).
