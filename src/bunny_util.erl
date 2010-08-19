@@ -62,7 +62,7 @@
 %% @type servobj_name()=binary()
 %% @type exchange_type()=binary()
 %% @type bunny_queue()=#'queue.declare'{}
-%% @type binding()=#'queue.bind{}
+%% @type binding()=#'queue.bind'{}
 %% @type durable_obj()=exchange()|bunny_queue()
 
 
