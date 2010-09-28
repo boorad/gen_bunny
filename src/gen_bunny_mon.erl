@@ -199,6 +199,8 @@ do_connect(ConsumerPid, ConnectionInfo,
     end.
 
 
+upgrade_connection(Conn = #connection{}) ->
+    Conn;
 upgrade_connection({connection, ConsumerPid, ConnectionInfo}) ->
     #connection{consumer=ConsumerPid,
                 info=ConnectionInfo}.
