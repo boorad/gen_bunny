@@ -3,3 +3,4 @@
 ebin
 deps
 .eunit
+support/build_tmp
