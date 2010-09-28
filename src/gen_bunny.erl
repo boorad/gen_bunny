@@ -224,7 +224,9 @@ terminate(Reason,
                            mod=Mod, modstate=ModState}) ->
     io:format("gen_bunny terminating with reason ~p~n", [Reason]),
     Mod:terminate(Reason, ModState),
-    ok = amqp_channel:call(Channel, #'basic.cancel'{consumer_tag=CTag}),
+    #'basic.cancel_ok'{} = amqp_channel:call(
+                             Channel,
+                             #'basic.cancel'{consumer_tag=CTag}),
     ok = amqp_channel:close(Channel),
     ok = amqp_connection:close(Connection),
     ok.

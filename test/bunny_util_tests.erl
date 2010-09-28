@@ -165,36 +165,36 @@ connect_stop(_) ->
     ok.
 
 direct_expects(ExpectedUser, ExpectedPass) ->
-    meck:expect(amqp_connection, start_direct,
-                 fun(#amqp_params{username=U, password=P})
+    meck:expect(amqp_connection, start,
+                 fun(direct, #amqp_params{username=U, password=P})
                        when U =:= ExpectedUser, P =:= ExpectedPass ->
-                         dummy_direct_conn
+                         {ok, dummy_direct_conn}
                  end),
 
     meck:expect(amqp_connection, open_channel,
                  fun(dummy_direct_conn) ->
-                         dummy_direct_channel
+                         {ok, dummy_direct_channel}
                  end),
     ok.
 
 network_expects(Host, Port, User, Pass, VHost) ->
-    meck:expect(amqp_connection, start_network,
-                 fun(#amqp_params{username=U,
-                                  password=P0,
-                                  host=H,
-                                  port=P1,
-                                  virtual_host=V})
+    meck:expect(amqp_connection, start,
+                 fun(network, #amqp_params{username=U,
+                                           password=P0,
+                                           host=H,
+                                           port=P1,
+                                           virtual_host=V})
                      when U =:= User,
                           P0 =:= Pass,
                           H =:= Host,
                           P1 =:= Port,
                           V =:= VHost ->
-                         dummy_network_conn
+                         {ok, dummy_network_conn}
                  end),
 
     meck:expect(amqp_connection, open_channel,
                  fun(dummy_network_conn) ->
-                         dummy_network_channel
+                         {ok, dummy_network_channel}
                  end),
     ok.
 
@@ -205,7 +205,8 @@ connect_test_() ->
         [begin
              direct_expects(?DEFAULT_USER, ?DEFAULT_PASS),
 
-             ?assertEqual({ok, {dummy_direct_conn, dummy_direct_channel}}, bunny_util:connect())
+             ?assertEqual({ok, {dummy_direct_conn, dummy_direct_channel}},
+                          bunny_util:connect())
          end])}.
 
 

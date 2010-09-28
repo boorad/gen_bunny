@@ -110,7 +110,7 @@ test_gb_stop({_ConnectionPid, _ChannelPid, TestPid}) ->
                 fun(Channel, #'basic.cancel'{
                       consumer_tag= <<"bunny.consumer">>})
                       when Channel =:= ExpectedChannelPid ->
-                        ok
+                        #'basic.cancel_ok'{consumer_tag= <<"bunny.consumer">>}
                 end),
 
     meck:expect(amqp_connection, close,
@@ -322,7 +322,7 @@ test_crash_setup() ->
                  fun(Channel, #'basic.cancel'{
                        consumer_tag= <<"bunny.consumer">>})
                     when Channel =:= ChannelPid ->
-                         ok
+                        #'basic.cancel_ok'{consumer_tag= <<"bunny.consumer">>}
                  end),
 
     meck:expect(amqp_connection, close,
