@@ -4,7 +4,7 @@ VERSION="2_1_0"
 
 BASE_URL="http://hg.rabbitmq.com/"
 
-GIT_BASE_URL="ssh://git.mochimedia.net/data/git/"
+GIT_BASE_URL="ssh://git@github.com:dreid/"
 
 DEPS="amqp_client rabbit_common"
 
