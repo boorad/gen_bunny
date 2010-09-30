@@ -1,7 +1,6 @@
-- gen_bunny flow control.
-- allow registration by name?
-- monitor connection/channel pids?
-- fill in boilerplate gen_bunny behavior with actual functionality
-- figure out how to deal with build-time dependency on the rabbitmq-server source
-- write unit tests
+- gen_bunny flow control
+- crash-only reconnection for gen_bunny behaviour
+- on-demand bunnyc creation
+- bunnyc message persistence when disconnected
 - write documentation
+- write integration tests
