@@ -1,4 +1,17 @@
 #!/bin/sh
+#
+# This is script is run to generate new amqp_client and rabbit_common git repos
+# from tagged versions of the rabbitmq-erlang-client and rabbitmq-server sources
+# It downloads everything needed to build these applications and then copies
+# the source and include files into the amqp_client and rabbit_common repos it
+# checks out from github.
+# 
+# This is done because the build of rabbitmq-erlang-client and
+# rabbitmq-server is too complicated to be performed by rebar.
+# 
+# Essentially this is a prebuild step that can be used to depend on rebar.
+# gen_bunny is only ever going to depend on tagged releases of the rabbitmq code
+#
 
 VERSION="2_1_0"
 
