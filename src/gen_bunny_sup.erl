@@ -20,9 +20,9 @@
 %% OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 %% THE SOFTWARE.
 
-%% @doc Supervisor for the wigwad application.
+%% @doc Supervisor for the gen_bunny application.
 -module(gen_bunny_sup).
--author('David Reid <dreid@mochimedia.com>').
+-author('David Reid <dreid@dreid.org>').
 
 -behaviour(supervisor).
 
