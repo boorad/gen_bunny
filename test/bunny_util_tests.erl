@@ -156,49 +156,46 @@ set_durable_queue_test() ->
 %% Connect helper
 %%
 connect_setup() ->
-    {ok, _} = mock:mock(amqp_connection),
+    ok = meck:new(amqp_connection),
     ok.
 
 connect_stop(_) ->
-    mock:verify_and_stop(amqp_connection),
+    meck:validate(amqp_connection),
+    meck:unload(amqp_connection),
     ok.
 
 direct_expects(ExpectedUser, ExpectedPass) ->
-    mock:expects(amqp_connection, start_direct,
-                 fun({#amqp_params{username=U, password=P}})
+    meck:expect(amqp_connection, start,
+                 fun(direct, #amqp_params{username=U, password=P})
                        when U =:= ExpectedUser, P =:= ExpectedPass ->
-                         true
-                 end,
-                 dummy_direct_conn),
+                         {ok, dummy_direct_conn}
+                 end),
 
-    mock:expects(amqp_connection, open_channel,
-                 fun({dummy_direct_conn}) ->
-                         true
-                 end,
-                 dummy_direct_channel),
+    meck:expect(amqp_connection, open_channel,
+                 fun(dummy_direct_conn) ->
+                         {ok, dummy_direct_channel}
+                 end),
     ok.
 
 network_expects(Host, Port, User, Pass, VHost) ->
-    mock:expects(amqp_connection, start_network,
-                 fun({#amqp_params{username=U,
-                                   password=P0,
-                                   host=H,
-                                   port=P1,
-                                   virtual_host=V}})
+    meck:expect(amqp_connection, start,
+                 fun(network, #amqp_params{username=U,
+                                           password=P0,
+                                           host=H,
+                                           port=P1,
+                                           virtual_host=V})
                      when U =:= User,
                           P0 =:= Pass,
                           H =:= Host,
                           P1 =:= Port,
                           V =:= VHost ->
-                         true
-                 end,
-                 dummy_network_conn),
+                         {ok, dummy_network_conn}
+                 end),
 
-    mock:expects(amqp_connection, open_channel,
-                 fun({dummy_network_conn}) ->
-                         true
-                 end,
-                 dummy_network_channel),
+    meck:expect(amqp_connection, open_channel,
+                 fun(dummy_network_conn) ->
+                         {ok, dummy_network_channel}
+                 end),
     ok.
 
 
@@ -208,7 +205,8 @@ connect_test_() ->
         [begin
              direct_expects(?DEFAULT_USER, ?DEFAULT_PASS),
 
-             ?assertEqual({ok, {dummy_direct_conn, dummy_direct_channel}}, bunny_util:connect())
+             ?assertEqual({ok, {dummy_direct_conn, dummy_direct_channel}},
+                          bunny_util:connect())
          end])}.
 
 
@@ -298,12 +296,12 @@ connect_network_host_port_creds_vhost_test_() ->
 %%
 
 declare_setup() ->
-    {ok, _} = mock:mock(amqp_channel),
+    ok = meck:new(amqp_channel),
     ok.
 
 
 declare_stop(_) ->
-    mock:stop(amqp_channel),
+    meck:unload(amqp_channel),
     ok.
 
 
@@ -311,30 +309,21 @@ declare_expects(Exchange, Queue, Binding) ->
     QName = bunny_util:get_name(Queue),
     EName = bunny_util:get_name(Exchange),
 
-    mock:expects(amqp_channel, call,
-                 fun({dummy_channel, Q = #'queue.declare'{}})
+    meck:expect(amqp_channel, call,
+                 fun(dummy_channel, Q = #'queue.declare'{})
                        when Q =:= Queue ->
-                         true;
-
-                    ({dummy_channel, E = #'exchange.declare'{}})
+                         #'queue.declare_ok'{queue=QName};
+                    (dummy_channel, E = #'exchange.declare'{})
                        when E =:= Exchange ->
-                         true;
-                    ({dummy_channel, #'queue.bind'{queue=BQ,
-                                                   exchange=BE,
-                                                   routing_key=BK}})
+                         #'exchange.declare_ok'{};
+                    (dummy_channel, #'queue.bind'{queue=BQ,
+                                                  exchange=BE,
+                                                  routing_key=BK})
                        when BQ =:= QName,
                             BE =:= EName,
                             BK =:= Binding->
-                         true
-                 end,
-                 fun({dummy_channel, #'queue.declare'{}}, _Times) ->
-                         #'queue.declare_ok'{queue=QName};
-                    ({dummy_channel, #'exchange.declare'{}}, _Times) ->
-                         #'exchange.declare_ok'{};
-                    ({dummy_channel, #'queue.bind'{}}, _Times) ->
                          #'queue.bind_ok'{}
-                 end,
-                 3),
+                 end),
     ok.
 
 
@@ -349,7 +338,7 @@ declare_everything_test_() ->
              ?assertEqual({ok, {bunny_util:new_exchange(<<"Foo">>),
                                 bunny_util:new_queue(<<"Foo">>)}},
                           bunny_util:declare(dummy_channel, <<"Foo">>)),
-             mock:verify(amqp_channel)
+             meck:validate(amqp_channel)
          end])}.
 
 
@@ -365,7 +354,7 @@ declare_names_test_() ->
                            bunny_util:declare(
                             dummy_channel,
                             {<<"Foo">>, <<"Bar">>, <<"Baz">>})),
-             mock:verify(amqp_channel)
+             meck:validate(amqp_channel)
          end])}.
 
 
@@ -383,7 +372,7 @@ declare_records_test_() ->
                             {bunny_util:new_exchange(<<"Foo">>),
                              bunny_util:new_queue(<<"Bar">>),
                              <<"Baz">>})),
-             mock:verify(amqp_channel)
+             meck:validate(amqp_channel)
          end])}.
 
 
@@ -393,12 +382,11 @@ declare_only_exchange_test_() ->
         [begin
              Exchange = bunny_util:new_exchange(<<"Foo">>),
 
-             mock:expects(amqp_channel, call,
-                          fun({dummy_channel, E = #'exchange.declare'{}})
-                                when E =:= Exchange ->
-                                  true
-                             end,
-                          #'exchange.declare_ok'{}),
+             meck:expect(amqp_channel, call,
+                         fun(dummy_channel, E = #'exchange.declare'{})
+                               when E =:= Exchange ->
+                                 #'exchange.declare_ok'{}
+                         end),
 
              ?assertEqual({ok, {bunny_util:new_exchange(<<"Foo">>),
                                 no_queue}},
@@ -406,7 +394,7 @@ declare_only_exchange_test_() ->
                             dummy_channel,
                             {bunny_util:new_exchange(<<"Foo">>)})),
 
-             mock:verify(amqp_channel)
+             meck:validate(amqp_channel)
          end])}.
 
 
@@ -416,12 +404,11 @@ declare_only_exchange_by_name_test_() ->
         [begin
              Exchange = bunny_util:new_exchange(<<"Foo">>),
 
-             mock:expects(amqp_channel, call,
-                          fun({dummy_channel, E = #'exchange.declare'{}})
-                                when E =:= Exchange ->
-                                  true
-                             end,
-                          #'exchange.declare_ok'{}),
+             meck:expect(amqp_channel, call,
+                         fun(dummy_channel, E = #'exchange.declare'{})
+                               when E =:= Exchange ->
+                                 #'exchange.declare_ok'{}
+                         end),
 
              ?assertEqual({ok, {bunny_util:new_exchange(<<"Foo">>),
                                 no_queue}},
@@ -429,7 +416,7 @@ declare_only_exchange_by_name_test_() ->
                             dummy_channel,
                             {<<"Foo">>})),
 
-             mock:verify(amqp_channel)
+             meck:validate(amqp_channel)
          end])}.
 
 
@@ -437,35 +424,33 @@ declare_exchange_test_() ->
     {setup, fun declare_setup/0, fun declare_stop/1,
      ?_test(
         [begin
-             mock:expects(
+             meck:expect(
                amqp_channel, call,
-               fun({dummy_channel,
-                    #'exchange.declare'{exchange= <<"test">>}}) ->
-                       true
-               end,
-               #'exchange.declare_ok'{}),
+               fun(dummy_channel,
+                   #'exchange.declare'{exchange= <<"test">>}) ->
+                       #'exchange.declare_ok'{}
+               end),
              ?assertMatch({ok, _Exchange},
                           bunny_util:declare_exchange(
                             dummy_channel,
                             bunny_util:new_exchange(<<"test">>))),
-             mock:verify(amqp_channel)
+             meck:validate(amqp_channel)
          end])}.
 
 declare_exchange_by_name_test_() ->
     {setup, fun declare_setup/0, fun declare_stop/1,
      ?_test(
         [begin
-             mock:expects(
+             meck:expect(
                amqp_channel, call,
-               fun({dummy_channel,
-                    #'exchange.declare'{exchange= <<"test">>}}) ->
-                       true
-               end,
-               #'exchange.declare_ok'{}),
+               fun(dummy_channel,
+                    #'exchange.declare'{exchange= <<"test">>}) ->
+                       #'exchange.declare_ok'{}
+               end),
              ?assertMatch({ok, _Exchange}, bunny_util:declare_exchange(
                                              dummy_channel,
                                              <<"test">>)),
-             mock:verify(amqp_channel)
+             meck:validate(amqp_channel)
          end])}.
 
 
@@ -473,17 +458,16 @@ declare_queue_test_() ->
     {setup, fun declare_setup/0, fun declare_stop/1,
      ?_test(
         [begin
-             mock:expects(
+             meck:expect(
                amqp_channel, call,
-               fun({dummy_channel,
-                    #'queue.declare'{queue= <<"test">>}}) ->
-                       true
-               end,
-               #'queue.declare_ok'{}),
+               fun(dummy_channel,
+                    #'queue.declare'{queue= <<"test">>}) ->
+                       #'queue.declare_ok'{}
+               end),
              ?assertMatch({ok, _Queue}, bunny_util:declare_queue(
                                           dummy_channel,
                                           bunny_util:new_queue(<<"test">>))),
-             mock:verify(amqp_channel)
+             meck:validate(amqp_channel)
          end])}.
 
 
@@ -491,17 +475,16 @@ declare_queue_by_name_test_() ->
     {setup, fun declare_setup/0, fun declare_stop/1,
      ?_test(
         [begin
-             mock:expects(
+             meck:expect(
                amqp_channel, call,
-               fun({dummy_channel,
-                    #'queue.declare'{queue= <<"test">>}}) ->
-                       true
-               end,
-               #'queue.declare_ok'{}),
+               fun(dummy_channel,
+                    #'queue.declare'{queue= <<"test">>}) ->
+                       #'queue.declare_ok'{}
+               end),
              ?assertMatch({ok, _Queue}, bunny_util:declare_queue(
                                           dummy_channel,
                                           <<"test">>)),
-             mock:verify(amqp_channel)
+             meck:validate(amqp_channel)
          end])}.
 
 
@@ -509,21 +492,20 @@ bind_queue_test_() ->
     {setup, fun declare_setup/0, fun declare_stop/1,
      ?_test(
         [begin
-             mock:expects(
+             meck:expect(
                amqp_channel, call,
-               fun({dummy_channel,
+               fun(dummy_channel,
                     #'queue.bind'{exchange= <<"test">>,
                                   queue= <<"test">>,
-                                  routing_key= <<"testKey">>}}) ->
-                       true
-               end,
-               #'queue.bind_ok'{}),
+                                  routing_key= <<"testKey">>}) ->
+                       #'queue.bind_ok'{}
+               end),
              ?assertEqual(ok, bunny_util:bind_queue(
                                 dummy_channel,
                                 bunny_util:new_exchange(<<"test">>),
                                 bunny_util:new_queue(<<"test">>),
                                 <<"testKey">>)),
-             mock:verify(amqp_channel)
+             meck:validate(amqp_channel)
          end])}.
 
 
@@ -534,15 +516,14 @@ bind_queue_by_names_test_() ->
     {setup, fun declare_setup/0, fun declare_stop/1,
      [?_test(
          [begin
-              mock:expects(
+              meck:expect(
                 amqp_channel, call,
-                fun({dummy_channel,
+                fun(dummy_channel,
                      #'queue.bind'{exchange= <<"test">>,
                                    queue= <<"testQueue">>,
-                                   routing_key= <<"testKey">>}}) ->
-                        true
-                end,
-                #'queue.bind_ok'{}),
+                                   routing_key= <<"testKey">>}) ->
+                        #'queue.bind_ok'{}
+                end),
 
               ?assertEqual(ok, bunny_util:bind_queue(
                                  dummy_channel,
@@ -550,7 +531,7 @@ bind_queue_by_names_test_() ->
                                      Queue,
                                      <<"testKey">>)),
 
-              mock:verify(amqp_channel)
+              meck:validate(amqp_channel)
           end]) || {Exchange, Queue} <-
                        lists:zip(
                          Exchanges ++ lists:reverse(Exchanges),
