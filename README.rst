@@ -16,10 +16,10 @@ To get a local copy of gen_bunny only the following steps are needed.
 
 ::
 
-git clone http://github.com/dreid/gen_bunny.git
-cd gen_bunny
-make
-make test
+  git clone http://github.com/dreid/gen_bunny.git
+  cd gen_bunny
+  make
+  make test
 
 
 Using rebar
@@ -34,8 +34,8 @@ your project's ``rebar.config`` file.
 
 ::
 
-{deps, [{gen_bunny, ".*",
-         {git, "http://github.com/dreid/gen_bunny.git", ""}}]}.
+  {deps, [{gen_bunny, ".*",
+           {git, "http://github.com/dreid/gen_bunny.git", ""}}]}.
 
 
 
