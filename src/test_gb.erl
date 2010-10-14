@@ -23,7 +23,10 @@
 -behavior(gen_bunny).
 
 -export([start_link/1,
-         init/1,
+         start_link/2,
+         stop/1]).
+
+-export([init/1,
          handle_message/2,
          handle_call/3,
          handle_cast/2,
@@ -37,7 +40,10 @@
 -record(state, {messages=[], calls=[], infos=[], casts=[]}).
 
 start_link(Opts) ->
-    gen_bunny:start_link(?MODULE, direct, <<"bunny.test">>, Opts).
+    start_link(direct, Opts).
+
+start_link(ConnectInfo, Opts) ->
+    gen_bunny:start_link(?MODULE, ConnectInfo, <<"bunny.test">>, Opts).
 
 init([]) ->
     {ok, #state{}}.
@@ -57,6 +63,9 @@ get_casts(Pid) ->
 get_infos(Pid) ->
     gen_bunny:call(Pid, get_infos).
 
+stop(Pid) ->
+    gen_bunny:call(Pid, stop).
+
 handle_message(Message, State=#state{messages=Messages})
   when ?is_message(Message) orelse ?is_tagged_message(Message) ->
     NewMessages = [Message|Messages],
@@ -72,6 +81,8 @@ handle_call(get_infos, _From, State=#state{infos=Infos}) ->
     {reply, Infos, State};
 handle_call(crash, _From, _State=#state{}) ->
     ok = crashed;
+handle_call(stop, _From, State=#state{}) ->
+    {stop, normal, ok, State};
 handle_call(Msg, _From, State=#state{calls=Calls}) ->
     {reply, ok, State#state{calls=[Msg|Calls]}}.
 
