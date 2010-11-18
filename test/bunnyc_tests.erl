@@ -251,6 +251,16 @@ unknown_cast_test() ->
                  bunnyc:handle_cast(unknown_cast, #bunnyc_state{})).
 
 
+reconnected_info_test() ->
+    ConnectionPid = a,
+    ChannelPid = b,
+    {noreply, #bunnyc_state{connection=Conn, channel=Chan}} =
+        bunnyc:handle_info({reconnected, {ConnectionPid, ChannelPid}},
+                           #bunnyc_state{}),
+    ?assertEqual(Conn, ConnectionPid),
+    ?assertEqual(Chan, ChannelPid).
+
+
 unknown_info_test() ->
     ?assertEqual({noreply, #bunnyc_state{}},
                  bunnyc:handle_info(unknown_info, #bunnyc_state{})).

@@ -135,6 +135,9 @@ handle_cast(_Request, State) ->
     {noreply, State}.
 
 
+handle_info({reconnected, {ConnectionPid, ChannelPid}}, State) ->
+    {noreply, State#bunnyc_state{connection=ConnectionPid, channel=ChannelPid}};
+
 handle_info(_Info, State) ->
     {noreply, State}.
 
